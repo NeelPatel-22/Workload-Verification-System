@@ -2,136 +2,178 @@
 
 ## 1. Project Approach
 
-The team will follow an **Agile iterative development approach**, allowing continuous refinement of features based on client and facilitator feedback.
+The team will follow an **Agile iterative development approach**, enabling continuous refinement of features based on client and facilitator feedback.
 
-Development will be carried out in phases, with incremental delivery of system components.
+Development will be carried out in structured weekly phases, with clearly defined deliverables and milestones aligned with D1, D2, and D3 submissions.
 
 ---
 
 ## 2. Development Phases
 
-### Phase 1: Requirements & Setup
+### Phase 1: Project Initiation
 
-* Understand client requirements
-* Set up GitHub repository and collaboration tools
+* Understand project scope and client expectations
+* Review current workload management process
+* Identify core system requirements
+
+---
+
+### Phase 2: Requirements Analysis
+
+* Conduct facilitator meeting
+* Draft problem statement
+* Set up GitHub repository and Microsoft Teams channel
 * Define MVP features
 
 ---
 
-### Phase 2: System Design
+### Phase 3: MVP Definition & D1 Preparation
 
-* Define system architecture
-* Design database structure
+* Conduct second client meeting to confirm MVP
+* Finalise D1 deliverable (requirements, plan, risks)
+* Assign responsibilities to team members
+
+---
+
+### Phase 4: Design & Development Start
+
+* Design system architecture (frontend, backend, database)
 * Create UI wireframes
-* Identify validation rules
+* Set up project framework
+* Begin implementation of role-based login system
 
 ---
 
-### Phase 3: Core Development
+### Phase 5: Development & Implementation
 
-* Implement data parsing (Excel import)
-* Develop validation engine
-* Build role-based login system
-
----
-
-### Phase 4: Feature Development
-
-* Develop dashboard views (staff/admin)
-* Implement query submission system
-* Apply role-based data filtering
+* Implement spreadsheet data parsing
+* Build initial UI pages (dashboard, login, workload view)
+* Continue authentication system
 
 ---
 
-### Phase 5: Integration & Testing
+### Phase 6: Core Feature Development
 
+* Implement automated validation rules
+* Develop query submission and tracking system
+* Implement role-based data access
 * Integrate frontend and backend
-* Perform unit testing and system testing
-* Fix bugs and improve performance
 
 ---
 
-### Phase 6: Finalisation
+### Phase 7: Testing & Review
 
-* Add reporting features
-* Implement PDF export (if required)
-* Prepare final demonstration and documentation
-
----
-
-## 3. Timeline (High-Level)
-
-| Week       | Activities                          |
-| ---------- | ----------------------------------- |
-| Week 1–2   | Requirements analysis, setup        |
-| Week 3–4   | MVP definition, design              |
-| Week 5–6   | Start development (backend + login) |
-| Week 7–8   | Validation + query system           |
-| Week 9     | Integration and D2 submission       |
-| Week 10–11 | Testing and refinement              |
-| Week 12    | Final system (D3)                   |
+* Conduct internal testing (unit + integration)
+* Demonstrate working features
+* Gather feedback from facilitator and client
 
 ---
 
-## 4. Team Responsibilities
+### Phase 8: Refinement & Finalisation
+
+* Improve validation logic based on feedback
+* Implement reporting features
+* Add PDF export functionality
+* Conduct end-to-end testing
+
+---
+
+### Phase 9: Final Submission
+
+* Final system testing and optimisation
+* Prepare final documentation
+* Demonstrate system to client
+* Submit D3 deliverable
+
+---
+
+## 3. Project Timeline, Deliverables and Milestones
+
+| Week     | Phase                 | Key Activities                                                    | Deliverables                       |
+| -------- | --------------------- | ----------------------------------------------------------------- | ---------------------------------- |
+| Week 1–2 | Project Initiation    | Initial client meeting, understand process, identify requirements | Notes from client meeting          |
+| Week 3   | Requirements Analysis | Setup GitHub & Teams, draft problem statement, define MVP         | Draft requirements + MVP           |
+| Week 4   | MVP & D1 Preparation  | Confirm MVP with client, assign roles                             | **D1 Submission**                  |
+| Week 5   | Design & Dev Start    | System design, UI planning, start login system                    | System design + login prototype    |
+| Week 6   | Development Start     | Implement data parsing, UI pages, login system                    | Working login + data import        |
+| Week 7   | Core Features Part 1  | Build validation rules, query system                              | Validation + query prototype       |
+| Week 8   | Core Features Part 2  | Role-based access, integration, testing                           | Integrated system (partial)        |
+| Week 9   | Review & D2           | Demo features, facilitator interview                              | **D2 Submission (working system)** |
+| Week 10  | Refinement            | Add reports, improve system                                       | Report module                      |
+| Week 11  | Testing & Fixes       | End-to-end testing, bug fixing                                    | Stable system                      |
+| Week 12  | Final Review          | Final demo, documentation, handover                               | **D3 Submission (final system)**   |
+
+---
+
+## 4. MVP Alignment with Development
+
+The MVP features will be implemented progressively:
+
+* **Data Parsing** → Week 6
+* **Validation Rules** → Week 7
+* **Role-Based Login & Access** → Week 5–8
+* **Query Submission System** → Week 7
+* **Basic Report View** → Week 8–10
+
+This ensures that all MVP features are completed by **D2 (Week 9)**.
+
+---
+
+## 5. Team Responsibilities
+
+* **Project Manager (Rotating)**
+
+  * Coordinate meetings and track progress
 
 * **Frontend Developers**
 
-  * UI pages (dashboard, query system)
-  * Improve user experience
+  * Build UI (dashboard, workload view, reports)
 
 * **Backend Developers**
 
-  * Data parsing
-  * Validation logic
-  * Query workflow
+  * Implement data parsing, validation logic, authentication
 
 * **Database Management**
 
-  * Design schema
-  * Manage data storage
+  * Design and manage workload data
 
 * **Testing**
 
-  * Unit testing
-  * Integration testing
-  * System testing
+  * Perform unit, integration, and system testing
 
 * **Documentation**
 
-  * Maintain meeting notes
-  * Update requirements and reports
+  * Maintain reports, meeting notes, GitHub updates
 
 ---
 
-## 5. Tools
+## 6. Tools
 
-* GitHub → Version control and task tracking
-* Microsoft Teams → Communication and meetings
-* Outlook → Client communication
-* Excel/Pandas → Data processing
+* **GitHub** – Code repository, version control, issue tracking
+* **Microsoft Teams** – Team communication and meetings
+* **Microsoft Outlook** – Client communication
+* **Spreadsheet Processing (Pandas)** – Data import and validation
 
 ---
 
-## 6. Risk Handling Approach
+## 7. Risk Handling Approach
 
-The project will manage risks through:
+Risks will be managed through:
 
-* Regular client feedback sessions
+* Regular client feedback
 * Iterative development cycles
 * Early testing with sample data
 
 ---
 
-## 7. Plan Flexibility
+## 8. Plan Flexibility
 
-This project plan is subject to change based on:
+This plan will be updated as needed based on:
 
 * Client feedback
 * Technical challenges
 * Project progress
 
-Adjustments will be made throughout development to ensure successful delivery.
+The Agile approach ensures adaptability while maintaining progress toward deliverables.
 
 ---
-
