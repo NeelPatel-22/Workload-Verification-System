@@ -7,6 +7,7 @@ import {
   BarChartOutlined,
   LogoutOutlined,
   UserOutlined,
+  FileAddOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -29,12 +30,14 @@ const MENU_ITEMS_BY_ROLE = {
     { key: '/admin/workload', icon: <FileTextOutlined />, label: 'School Workload' },
     { key: '/admin/queries', icon: <ExclamationCircleOutlined />, label: 'All Queries' },
     { key: '/admin/reports', icon: <BarChartOutlined />, label: 'Reports' },
+    { key: '/admin/importdata', icon: <FileAddOutlined />, label: 'Import Data' },
   ],
   operations: [
     { key: '/admin/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
     { key: '/admin/workload', icon: <FileTextOutlined />, label: 'School Workload' },
     { key: '/admin/queries', icon: <ExclamationCircleOutlined />, label: 'All Queries' },
     { key: '/admin/reports', icon: <BarChartOutlined />, label: 'Reports' },
+    { key: '/admin/importdata', icon: <FileAddOutlined />, label: 'Import Data' },
   ],
 };
 
