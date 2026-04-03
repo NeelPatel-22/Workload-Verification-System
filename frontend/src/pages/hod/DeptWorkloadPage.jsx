@@ -1,5 +1,8 @@
-import { Card, Table, Tag, Typography, Space, Progress } from 'antd';
+import { useState, useEffect } from 'react';
+import { Card, Table, Tag, Typography, Space, Progress, Spin } from 'antd';
+
 import { useAuth } from '../../context/AuthContext';
+
 import { MOCK_WORKLOAD, MOCK_VALIDATION_ISSUES } from '../../mock/mockData';
 
 const { Title, Text } = Typography;
@@ -7,8 +10,31 @@ const { Title, Text } = Typography;
 export default function DeptWorkloadPage() {
   const { currentUser } = useAuth();
 
-  const deptWorkload = MOCK_WORKLOAD.filter((w) => w.department === currentUser.department);
-  const deptIssues = MOCK_VALIDATION_ISSUES.filter((i) => i.department === currentUser.department);
+  const[loading, setLoading] = useState(true);
+  const[workload, setWorkload] = useState([]);
+  const[issues, setIssues] = useState([]);
+
+  useEffect(() => {
+    const fetchData = async() => {
+      setLoading(true);
+
+      try{
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        setWorkload(MOCK_WORKLOAD);
+        setIssues(MOCK_VALIDATION_ISSUES);
+      }catch(error){
+        console.error('Error fetching data:', error)
+      }finally{
+        setLoading(false)
+      }
+    };
+
+    fetchData();
+  }, [])
+
+  const deptWorkload = workload.filter((w) => w.department === currentUser.department);
+  const deptIssues = issues.filter((i) => i.department === currentUser.department);
 
   const columns = [
     { title: 'Staff Member', dataIndex: 'name', key: 'name' },
@@ -40,6 +66,17 @@ export default function DeptWorkloadPage() {
         ),
     },
   ];
+
+  //adding spinner
+  if(loading){
+    if (loading) {
+      return (
+        <div style={{ textAlign: 'center', marginTop: '100px' }}>
+          <Spin size="large" description='Loading department workload...' />
+        </div>
+      );
+    }
+  }
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>

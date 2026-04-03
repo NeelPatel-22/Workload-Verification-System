@@ -1,11 +1,16 @@
-import { Card, Row, Col, Statistic, Table, Tag, Typography, Space, Alert } from 'antd';
+import { useEffect, useState } from 'react';
+
+import { Card, Row, Col, Statistic, Table, Tag, Typography, Space, Alert, Spin } from 'antd';
 import {
   TeamOutlined,
   ExclamationCircleOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
 } from '@ant-design/icons';
+
 import { useAuth } from '../../context/AuthContext';
+
+//mock data
 import { MOCK_WORKLOAD, MOCK_QUERIES, MOCK_VALIDATION_ISSUES } from '../../mock/mockData';
 
 const { Title, Text } = Typography;
@@ -13,9 +18,36 @@ const { Title, Text } = Typography;
 export default function HodDashboardPage() {
   const { currentUser } = useAuth();
 
-  const deptWorkload = MOCK_WORKLOAD.filter((w) => w.department === currentUser.department);
-  const deptQueries = MOCK_QUERIES.filter((q) => q.department === currentUser.department);
-  const deptIssues = MOCK_VALIDATION_ISSUES.filter((i) => i.department === currentUser.department);
+  const[workload, setWorkload] = useState([]);
+  const[queries, setQueries] = useState([]);
+  const[issues, setIssues] = useState([]);
+  const[loading, setLoading] = useState(true);
+
+  //need api call here
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+
+      try{
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        setWorkload(MOCK_WORKLOAD);
+        setQueries(MOCK_QUERIES);
+        setIssues(MOCK_VALIDATION_ISSUES);  
+      }catch(error){
+        console.error('Error fetching dashboard data:', error);
+      }finally{
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+}, []);
+
+  //using state instead of mock data
+  const deptWorkload = workload.filter((w) => w.department === currentUser.department);
+  const deptQueries = queries.filter((q) => q.department === currentUser.department);
+  const deptIssues = issues.filter((i) => i.department === currentUser.department);
 
   const pendingQueries = deptQueries.filter((q) => q.status === 'pending');
 
@@ -35,6 +67,15 @@ export default function HodDashboardPage() {
       ),
     },
   ];
+
+  //loading data-spinner
+  if(loading){
+    return(
+      <div style={{ textAlign: 'center', marginTop: '100px' }}>
+        <Spin size="large" tip="Loading dashboard..." />
+      </div>
+    )
+  }
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -61,6 +102,7 @@ export default function HodDashboardPage() {
             />
           </Card>
         </Col>
+
         <Col span={6}>
           <Card>
             <Statistic
@@ -71,6 +113,7 @@ export default function HodDashboardPage() {
             />
           </Card>
         </Col>
+
         <Col span={6}>
           <Card>
             <Statistic
@@ -81,6 +124,7 @@ export default function HodDashboardPage() {
             />
           </Card>
         </Col>
+        
         <Col span={6}>
           <Card>
             <Statistic
