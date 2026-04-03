@@ -42,7 +42,6 @@ export default function App() {
             <Route path="/hod/dashboard" element={<HodDashboardPage />} />
             <Route path="/hod/workload" element={<DeptWorkloadPage />} />
             <Route path="/hod/queries" element={<ReviewQueriesPage />} />
-            <Route path="/hod/importdata" element={<ImportData />} />
 
             {/* Head of School / Operations routes */}
             <Route path="/admin/dashboard" element={<AdminDashboardPage />} />

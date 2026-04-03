@@ -25,7 +25,7 @@ export default function ImportData() {
         setFileData(jsonData);   // for submitting data (used by backend)
 
       } catch (error) {
-        message.error(error);
+        message.error(error?.message || "Failed to parse");
       }
     };
 
@@ -46,7 +46,7 @@ export default function ImportData() {
     message.success('data uploaded successfully');
 
     //navigate to dashboard after success
-    navigate('/dashboard');
+    navigate('admin/dashboard');
   };
 
   // show limited rows
