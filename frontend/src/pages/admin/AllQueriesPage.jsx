@@ -1,4 +1,8 @@
-import { Card, Table, Tag, Typography, Space } from 'antd';
+import { useEffect, useState } from 'react';
+
+import { Card, Table, Tag, Typography, Space, Spin } from 'antd';
+
+//mock data for now
 import { MOCK_QUERIES } from '../../mock/mockData';
 
 const { Title, Text } = Typography;
@@ -6,6 +10,30 @@ const { Title, Text } = Typography;
 const STATUS_COLORS = { pending: 'orange', approved: 'green', declined: 'red' };
 
 export default function AllQueriesPage() {
+  //used by api later
+  const[loading, setLoading] = useState(true);
+  const[queries, setQueries] = useState([]);
+
+  //replace this with api call later
+  useEffect(() => {
+    const fetchQueries = async () => {
+      setLoading(true);
+
+      try {
+        await new Promise((res) => setTimeout(res, 500));
+
+        //replace with api response
+        setQueries(MOCK_QUERIES);
+      } catch (error) {
+        console.error('Failed to load queries:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchQueries();
+  }, []);
+
   const columns = [
     { title: 'Staff Member', dataIndex: 'staffName', key: 'staffName' },
     { title: 'Department', dataIndex: 'department', key: 'department' },
@@ -27,14 +55,31 @@ export default function AllQueriesPage() {
     },
   ];
 
+  //spinner sections; will load automatically with api later
+  if(loading){
+    return(
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '100px' }}>
+        <Spin size="large" tip="Loading queries..." />
+      </div>
+    )
+  }
+
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <div>
         <Title level={4} style={{ margin: 0 }}>All Queries</Title>
         <Text type="secondary">View all correction requests across the school (read-only)</Text>
       </div>
+
+      {/*table section; data will come from api*/}
       <Card>
-        <Table columns={columns} dataSource={MOCK_QUERIES} rowKey="id" pagination={false} size="middle" />
+        <Table 
+          columns={columns} 
+          dataSource={queries} 
+          rowKey="id" 
+          pagination={false} 
+          size="middle" 
+        />
       </Card>
     </Space>
   );

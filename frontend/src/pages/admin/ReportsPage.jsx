@@ -1,10 +1,39 @@
-import { Card, Table, Typography, Space, Button, Divider } from 'antd';
+import { useState, useEffect } from 'react';
+
+import { Card, Table, Typography, Space, Button, Divider, Spin } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
+
+//mock data
 import { MOCK_WORKLOAD } from '../../mock/mockData';
 
 const { Title, Text } = Typography;
 
 export default function ReportsPage() {
+  //data will come from api call later
+  const[loading, setLoading] = useState(true);
+  const[workload, setWorkload] = useState([]);
+
+  //api call for mock data
+  useEffect(() => {
+    const fetchReportData = async () => {
+      setLoading(true);
+
+      try{
+        await new Promise((res) => setTimeout(res, 500));
+
+        //replace with api response
+        setWorkload(MOCK_WORKLOAD);
+      }catch(error){
+        console.error('Failed to load report data:', error)
+      }finally{
+        setLoading(false);
+      }
+    };
+
+    fetchReportData();
+  }, []);
+
+  //table config
   const summaryColumns = [
     { title: 'Staff Member', dataIndex: 'name', key: 'name' },
     { title: 'Department', dataIndex: 'department', key: 'department' },
@@ -17,10 +46,21 @@ export default function ReportsPage() {
     { title: 'Total (%)', dataIndex: 'total', key: 'total', render: (v) => <Text strong>{v}%</Text> },
   ];
 
+  //file export function
   function handleExportPDF() {
     window.print();
   }
 
+  //for loading ui
+  if(loading){
+    return(
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '100px' }}>
+        <Spin size="large" tip="Generating report..."/>
+      </div>
+    )
+  }
+
+  //main ui
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
@@ -28,6 +68,7 @@ export default function ReportsPage() {
           <Title level={4} style={{ margin: 0 }}>Workload Summary Report</Title>
           <Text type="secondary">2026 Academic Year · PMC School</Text>
         </div>
+
         <Button icon={<DownloadOutlined />} onClick={handleExportPDF}>
           Export PDF
         </Button>
@@ -38,14 +79,16 @@ export default function ReportsPage() {
           <Text strong>School: </Text><Text>PMC (Physics, Maths, Computer Science)</Text>
           <Divider style={{ margin: '12px 0' }} />
         </div>
+
         <Table
           columns={summaryColumns}
-          dataSource={MOCK_WORKLOAD}
+          dataSource={workload}
           rowKey="staffId"
           pagination={false}
           size="middle"
           summary={(data) => {
             const avgTotal = (data.reduce((s, r) => s + r.total, 0) / data.length).toFixed(1);
+            
             return (
               <Table.Summary.Row>
                 <Table.Summary.Cell index={0} colSpan={8}>
