@@ -11,6 +11,7 @@ import AdminDashboardPage from './pages/admin/DashboardPage';
 import SchoolWorkloadPage from './pages/admin/SchoolWorkloadPage';
 import AllQueriesPage from './pages/admin/AllQueriesPage';
 import ReportsPage from './pages/admin/ReportsPage';
+import ImportData from './pages/admin/ImportData';
 
 function RootRedirect() {
   const { currentUser } = useAuth();
@@ -47,6 +48,7 @@ export default function App() {
             <Route path="/admin/workload" element={<SchoolWorkloadPage />} />
             <Route path="/admin/queries" element={<AllQueriesPage />} />
             <Route path="/admin/reports" element={<ReportsPage />} />
+            <Route path="/admin/importdata" element={<ImportData />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
