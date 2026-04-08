@@ -1,7 +1,10 @@
-import { Card, Table, Tag, Typography, Button, Modal, Form, Input, Space, Empty } from 'antd';
+import { Card, Table, Tag, Typography, Button, Modal, Form, Input, Space, Empty, Spin } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
-import { useState } from 'react';
+
+import { useState, useEffect } from 'react';
+
 import { useAuth } from '../../context/AuthContext';
+
 import { MOCK_QUERIES } from '../../mock/mockData';
 
 const { Title, Text } = Typography;
@@ -15,12 +18,35 @@ const STATUS_COLORS = {
 
 export default function StaffQueriesPage() {
   const { currentUser } = useAuth();
-  const [queries, setQueries] = useState(
-    MOCK_QUERIES.filter((q) => q.staffId === currentUser.id)
-  );
+
+  const[loading, setLoading] = useState(true);
+  const[queries, setQueries] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
+
   const [form] = Form.useForm();
 
+  // const [queries, setQueries] = useState(
+  //   MOCK_QUERIES.filter((q) => q.staffId === currentUser.id)
+  // );
+  useEffect(() => {
+    const fetchQueries = async() => {
+      setLoading(true);
+
+      try{
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        setQueries(MOCK_QUERIES.filter((q) => q.staffId === currentUser.id))
+      }catch(error){
+        console.error('Failed to load queries:', error)
+      }finally{
+        setLoading(false)
+      }
+    };
+
+    fetchQueries();
+  },[currentUser.id])
+
+  //add new query
   function handleSubmit(values) {
     const newQuery = {
       id: Date.now(),
@@ -33,11 +59,13 @@ export default function StaffQueriesPage() {
       submittedAt: new Date().toISOString().slice(0, 10),
       hodComment: null,
     };
+
     setQueries((prev) => [...prev, newQuery]);
     form.resetFields();
     setModalOpen(false);
   }
 
+  //table columns
   const columns = [
     { title: 'Date', dataIndex: 'submittedAt', key: 'submittedAt', width: 110 },
     { title: 'Subject', dataIndex: 'subject', key: 'subject' },
@@ -70,14 +98,26 @@ export default function StaffQueriesPage() {
         </Button>
       </div>
 
+      {/*table with spinner*/}
       <Card>
-        {queries.length === 0 ? (
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '40px' }}>
+            <Spin size="large" description='Loading your queries...'/>
+          </div>
+        ) : queries.length === 0 ? (
+          //empty state
           <Empty description="No queries submitted yet." />
         ) : (
-          <Table columns={columns} dataSource={queries} rowKey="id" pagination={false} />
+          <Table
+            columns={columns}
+            dataSource={queries}
+            rowKey="id"
+            pagination={false}
+          />
         )}
       </Card>
 
+      {/*modal to submit query*/} 
       <Modal
         title="Submit a Query"
         open={modalOpen}
@@ -93,6 +133,7 @@ export default function StaffQueriesPage() {
           >
             <Input placeholder="e.g. Incorrect HDR supervision hours" />
           </Form.Item>
+
           <Form.Item
             name="message"
             label="Details"
@@ -100,6 +141,7 @@ export default function StaffQueriesPage() {
           >
             <TextArea rows={4} placeholder="Describe the issue with your workload allocation..." />
           </Form.Item>
+
           <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
             <Space>
               <Button onClick={() => setModalOpen(false)}>Cancel</Button>
