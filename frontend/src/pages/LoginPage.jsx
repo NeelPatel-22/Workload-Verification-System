@@ -31,42 +31,52 @@ export default function LoginPage() {
 
   function handleDemoSelect(username) {
     form.setFieldsValue({ username, password: 'password' });
+    setError('');
   }
 
-  function handleSubmit(values) {
-    const result = login(values.username, values.password);
+  async function handleSubmit(values) {
+    setError('');
+
+    const result = await login(values.username, values.password);
+
     if (result.success) {
       const redirect = ROLE_REDIRECTS[result.user.role] || '/';
       navigate(redirect);
     } else {
-      setError('Invalid username or password.');
+      setError(result.message || 'Invalid username or password.');
     }
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #003087 0%, #0057b8 100%)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '24px',
-    }}>
+    <div
+      style={{
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #003087 0%, #0057b8 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '24px',
+      }}
+    >
       <Card style={{ width: '100%', maxWidth: 420, borderRadius: 12 }} variant="borderless">
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{
-            width: 64,
-            height: 64,
-            borderRadius: '50%',
-            background: '#003087',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 16px',
-          }}>
+          <div
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: '50%',
+              background: '#003087',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px',
+            }}
+          >
             <UserOutlined style={{ fontSize: 28, color: '#fff' }} />
           </div>
-          <Title level={3} style={{ margin: 0 }}>Workload Verification System</Title>
+          <Title level={3} style={{ margin: 0 }}>
+            Workload Verification System
+          </Title>
           <Text type="secondary">UWA – PMC School Operations</Text>
         </div>
 
@@ -75,7 +85,9 @@ export default function LoginPage() {
         )}
 
         <div style={{ marginBottom: 16 }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>Quick fill (demo only):</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Quick fill (demo only):
+          </Text>
           <Select
             placeholder="Select a demo account"
             style={{ width: '100%', marginTop: 4 }}
@@ -92,12 +104,14 @@ export default function LoginPage() {
           >
             <Input prefix={<UserOutlined />} placeholder="Username" size="large" />
           </Form.Item>
+
           <Form.Item
             name="password"
             rules={[{ required: true, message: 'Please enter your password.' }]}
           >
             <Input.Password prefix={<LockOutlined />} placeholder="Password" size="large" />
           </Form.Item>
+
           <Form.Item style={{ marginBottom: 0 }}>
             <Button type="primary" htmlType="submit" block size="large">
               Log In

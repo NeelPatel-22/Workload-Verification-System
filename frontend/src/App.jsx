@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import ProtectedRoute from "./ProtectedRoute";
+import ProtectedRoute from './ProtectedRoute';
 import AppLayout from './layouts/AppLayout';
 import LoginPage from './pages/LoginPage';
 import StaffWorkloadPage from './pages/staff/WorkloadPage';
@@ -12,6 +12,7 @@ import AdminDashboardPage from './pages/admin/DashboardPage';
 import SchoolWorkloadPage from './pages/admin/SchoolWorkloadPage';
 import AllQueriesPage from './pages/admin/AllQueriesPage';
 import ReportsPage from './pages/admin/ReportsPage';
+import ImportData from './pages/admin/ImportData';
 
 function RootRedirect() {
   const { currentUser } = useAuth();
@@ -43,6 +44,7 @@ export default function App() {
               </ProtectedRoute>
             }
           >
+            {/* Staff routes */}
             <Route
               path="/staff/workload"
               element={
@@ -60,6 +62,7 @@ export default function App() {
               }
             />
 
+            {/* Head of Department routes */}
             <Route
               path="/hod/dashboard"
               element={
@@ -85,6 +88,7 @@ export default function App() {
               }
             />
 
+            {/* Head of School / Operations routes */}
             <Route
               path="/admin/dashboard"
               element={
@@ -114,6 +118,14 @@ export default function App() {
               element={
                 <ProtectedRoute allowedRoles={['hos', 'operations']}>
                   <ReportsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/importdata"
+              element={
+                <ProtectedRoute allowedRoles={['hos', 'operations']}>
+                  <ImportData />
                 </ProtectedRoute>
               }
             />
