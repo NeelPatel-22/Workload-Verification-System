@@ -1,5 +1,4 @@
 import { createContext, useContext, useState } from 'react';
-import { MOCK_USERS } from '../mock/mockData';
 
 const AuthContext = createContext(null);
 
@@ -15,16 +14,38 @@ export function AuthProvider({ children }) {
     }
   });
 
-  function login(username, password) {
-    const user = MOCK_USERS.find(
-      (u) => u.username === username && u.password === password
-    );
-    if (user) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-      setCurrentUser(user);
-      return { success: true, user };
+  async function login(username, password) {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        return {
+          success: false,
+          message: data.message || 'Login failed',
+        };
+      }
+
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data.user));
+      setCurrentUser(data.user);
+
+      return {
+        success: true,
+        user: data.user,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Unable to connect to server',
+      };
     }
-    return { success: false };
   }
 
   function logout() {
