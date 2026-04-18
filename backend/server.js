@@ -1,6 +1,15 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import { initDB, setupDB, seedUsers } from "./db.js";
+
+let db;
+
+(async () => {
+  db = await initDB();
+  await setupDB(db);
+  await seedUsers(db);
+})();
 
 dotenv.config();
 
@@ -173,39 +182,39 @@ app.get("/api/health", (req, res) => {
 });
 
 // Login
-app.post("/api/auth/login", (req, res) => {
-  const { username, password } = req.body;
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const { username, password } = req.body;
 
-  console.log("Login route hit");
-  console.log("Received login request body:", req.body);
+    const user = await db.get(
+      "SELECT * FROM users WHERE username = ? AND password = ?",
+      [username, password]
+    );
 
-  const user = users.find(
-    (u) => u.username === username && u.password === password
-  );
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid username or password",
+      });
+    }
 
-  console.log("Matched user:", user);
-
-  if (!user) {
-    return res.status(401).json({
-      success: false,
-      message: "Invalid username or password",
+    res.json({
+      success: true,
+      message: "Login successful",
+      user: {
+        id: user.id,
+        username: user.username,
+        name: user.name,
+        role: user.role,
+        department: user.department,
+        staffId: user.staffId,
+      },
     });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
   }
-
-  console.log("Login successful for user:", user.username);
-
-  res.json({
-    success: true,
-    message: "Login successful",
-    user: {
-      id: user.id,
-      username: user.username,
-      name: user.name,
-      role: user.role,
-      department: user.department,
-      staffId: user.staffId,
-    },
-  });
 });
 
 // Current user

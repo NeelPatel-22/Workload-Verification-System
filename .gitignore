@@ -24,3 +24,6 @@ yarn-error.log*
 
 # Vite
 *.local
+
+# Database
+backend/database.sqlite
