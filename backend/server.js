@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { validateWorkloads } from "./validation.js";
-import { users, workloads, validationIssues, queries } from "./data/mock-data.js";
+import { users, workloads, queries } from "./data/mock-data.js";
 
 dotenv.config();
 
@@ -166,7 +166,7 @@ app.get(
       return res.json(deptIssues);
     }
 
-    return res.json(validationIssues);
+    return res.json(generatedIssuesIssues);
   }
 );
 
