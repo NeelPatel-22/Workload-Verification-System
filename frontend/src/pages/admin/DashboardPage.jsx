@@ -1,5 +1,4 @@
-import {useState, useEffect} from 'react';
-
+import { useState, useEffect } from 'react';
 import { Card, Row, Col, Statistic, Table, Tag, Typography, Space, Alert, Spin } from 'antd';
 import {
   TeamOutlined,
@@ -7,48 +6,85 @@ import {
   ClockCircleOutlined,
   CheckCircleOutlined,
 } from '@ant-design/icons';
-
-//mock data that will be replaced by api
-import { MOCK_WORKLOAD, MOCK_QUERIES, MOCK_VALIDATION_ISSUES } from '../../mock/mockData';
+import { useAuth } from '../../context/AuthContext';
 
 const { Title, Text } = Typography;
 
 export default function AdminDashboardPage() {
-  //this will hold api data instead of mock data
+  const { currentUser } = useAuth();
+
   const [loading, setLoading] = useState(true);
+  const [workload, setWorkload] = useState([]);
+  const [queries, setQueries] = useState([]);
+  const [validationIssues, setValidationIssues] = useState([]);
+  const [error, setError] = useState('');
 
-  const[workload, setWorkload] = useState([]);
-  const[queries, setQueries] = useState([]);
-  const[validationIssues, setValidationIssues] = useState([]);
-
-  //later it will be a call to real api
   useEffect(() => {
     const fetchDashboardData = async () => {
+      if (!currentUser?.username) {
+        setLoading(false);
+        setError('No logged-in user found.');
+        return;
+      }
+
       setLoading(true);
+      setError('');
 
       try {
-        //remove later when backend is ready(call api here)
-        await new Promise((resolve) => setTimeout(resolve, 600));
+        const [workloadRes, queriesRes, issuesRes] = await Promise.all([
+          fetch(`${import.meta.env.VITE_API_URL}/api/workloads`, {
+            headers: {
+              'Content-Type': 'application/json',
+              'x-user': currentUser.username,
+            },
+          }),
+          fetch(`${import.meta.env.VITE_API_URL}/api/queries`, {
+            headers: {
+              'Content-Type': 'application/json',
+              'x-user': currentUser.username,
+            },
+          }),
+          fetch(`${import.meta.env.VITE_API_URL}/api/validation-issues`, {
+            headers: {
+              'Content-Type': 'application/json',
+              'x-user': currentUser.username,
+            },
+          }),
+        ]);
 
-        //replace with real api response later
-        setWorkload(MOCK_WORKLOAD);
-        setQueries(MOCK_QUERIES);
-        setValidationIssues(MOCK_VALIDATION_ISSUES);
+        const [workloadData, queriesData, issuesData] = await Promise.all([
+          workloadRes.json(),
+          queriesRes.json(),
+          issuesRes.json(),
+        ]);
+
+        if (!workloadRes.ok) {
+          throw new Error(workloadData.message || 'Failed to load workloads.');
+        }
+        if (!queriesRes.ok) {
+          throw new Error(queriesData.message || 'Failed to load queries.');
+        }
+        if (!issuesRes.ok) {
+          throw new Error(issuesData.message || 'Failed to load validation issues.');
+        }
+
+        setWorkload(Array.isArray(workloadData) ? workloadData : []);
+        setQueries(Array.isArray(queriesData) ? queriesData : []);
+        setValidationIssues(Array.isArray(issuesData) ? issuesData : []);
       } catch (error) {
         console.error('Error loading dashboard data:', error);
+        setError(error.message || 'Unable to load dashboard data.');
       } finally {
         setLoading(false);
       }
     };
 
     fetchDashboardData();
-  }, []);
+  }, [currentUser]);
 
+  const pendingQueries = queries.filter((q) => q.status === 'pending');
+  const resolvedQueries = queries.filter((q) => q.status !== 'pending');
 
-  const pendingQueries = MOCK_QUERIES.filter((q) => q.status === 'pending');
-  const resolvedQueries = MOCK_QUERIES.filter((q) => q.status !== 'pending');
-
-  //for table
   const recentColumns = [
     { title: 'Staff Member', dataIndex: 'staffName', key: 'staffName' },
     { title: 'Department', dataIndex: 'department', key: 'department' },
@@ -66,16 +102,18 @@ export default function AdminDashboardPage() {
     },
   ];
 
-  //ui waits for api(mock data for now)
-  if(loading){
-    return(
+  if (loading) {
+    return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '100px' }}>
-        <Spin size="large" tip="Loading dashboard..."/>
+        <Spin size="large" tip="Loading dashboard..." />
       </div>
-    )
+    );
   }
 
-  //main ui
+  if (error) {
+    return <Alert message="Unable to load dashboard" description={error} type="error" showIcon />;
+  }
+
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <div>
@@ -83,7 +121,6 @@ export default function AdminDashboardPage() {
         <Text type="secondary">2026 Academic Year</Text>
       </div>
 
-      {/*warning alert*/}
       {validationIssues.length > 0 && (
         <Alert
           type="warning"
@@ -95,11 +132,7 @@ export default function AdminDashboardPage() {
       <Row gutter={16}>
         <Col span={6}>
           <Card>
-            <Statistic 
-              title="Total Staff" 
-              value={workload.length} 
-              prefix={<TeamOutlined />} 
-            />
+            <Statistic title="Total Staff" value={workload.length} prefix={<TeamOutlined />} />
           </Card>
         </Col>
 

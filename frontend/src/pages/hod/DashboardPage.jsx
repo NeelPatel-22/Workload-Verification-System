@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-
 import { Card, Row, Col, Statistic, Table, Tag, Typography, Space, Alert, Spin } from 'antd';
 import {
   TeamOutlined,
@@ -7,44 +6,82 @@ import {
   CheckCircleOutlined,
   ClockCircleOutlined,
 } from '@ant-design/icons';
-
 import { useAuth } from '../../context/AuthContext';
-
-//mock data
-import { MOCK_WORKLOAD, MOCK_QUERIES, MOCK_VALIDATION_ISSUES } from '../../mock/mockData';
 
 const { Title, Text } = Typography;
 
 export default function HodDashboardPage() {
   const { currentUser } = useAuth();
 
-  const[workload, setWorkload] = useState([]);
-  const[queries, setQueries] = useState([]);
-  const[issues, setIssues] = useState([]);
-  const[loading, setLoading] = useState(true);
+  const [workload, setWorkload] = useState([]);
+  const [queries, setQueries] = useState([]);
+  const [issues, setIssues] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  //need api call here
   useEffect(() => {
     const fetchData = async () => {
+      if (!currentUser?.username) {
+        setLoading(false);
+        setError('No logged-in user found.');
+        return;
+      }
+
       setLoading(true);
+      setError('');
 
-      try{
-        await new Promise((resolve) => setTimeout(resolve, 500));
+      try {
+        const [workloadRes, queriesRes, issuesRes] = await Promise.all([
+          fetch(`${import.meta.env.VITE_API_URL}/api/workloads`, {
+            headers: {
+              'Content-Type': 'application/json',
+              'x-user': currentUser.username,
+            },
+          }),
+          fetch(`${import.meta.env.VITE_API_URL}/api/queries`, {
+            headers: {
+              'Content-Type': 'application/json',
+              'x-user': currentUser.username,
+            },
+          }),
+          fetch(`${import.meta.env.VITE_API_URL}/api/validation-issues`, {
+            headers: {
+              'Content-Type': 'application/json',
+              'x-user': currentUser.username,
+            },
+          }),
+        ]);
 
-        setWorkload(MOCK_WORKLOAD);
-        setQueries(MOCK_QUERIES);
-        setIssues(MOCK_VALIDATION_ISSUES);  
-      }catch(error){
+        const [workloadData, queriesData, issuesData] = await Promise.all([
+          workloadRes.json(),
+          queriesRes.json(),
+          issuesRes.json(),
+        ]);
+
+        if (!workloadRes.ok) {
+          throw new Error(workloadData.message || 'Failed to load workloads.');
+        }
+        if (!queriesRes.ok) {
+          throw new Error(queriesData.message || 'Failed to load queries.');
+        }
+        if (!issuesRes.ok) {
+          throw new Error(issuesData.message || 'Failed to load validation issues.');
+        }
+
+        setWorkload(Array.isArray(workloadData) ? workloadData : []);
+        setQueries(Array.isArray(queriesData) ? queriesData : []);
+        setIssues(Array.isArray(issuesData) ? issuesData : []);
+      } catch (error) {
         console.error('Error fetching dashboard data:', error);
-      }finally{
+        setError(error.message || 'Unable to load dashboard data.');
+      } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-}, []);
+  }, [currentUser]);
 
-  //using state instead of mock data
   const deptWorkload = workload.filter((w) => w.department === currentUser.department);
   const deptQueries = queries.filter((q) => q.department === currentUser.department);
   const deptIssues = issues.filter((i) => i.department === currentUser.department);
@@ -68,13 +105,16 @@ export default function HodDashboardPage() {
     },
   ];
 
-  //loading data-spinner
-  if(loading){
-    return(
+  if (loading) {
+    return (
       <div style={{ textAlign: 'center', marginTop: '100px' }}>
         <Spin size="large" tip="Loading dashboard..." />
       </div>
-    )
+    );
+  }
+
+  if (error) {
+    return <Alert message="Unable to load dashboard" description={error} type="error" showIcon />;
   }
 
   return (
@@ -95,11 +135,7 @@ export default function HodDashboardPage() {
       <Row gutter={16}>
         <Col span={6}>
           <Card>
-            <Statistic
-              title="Staff Members"
-              value={deptWorkload.length}
-              prefix={<TeamOutlined />}
-            />
+            <Statistic title="Staff Members" value={deptWorkload.length} prefix={<TeamOutlined />} />
           </Card>
         </Col>
 
@@ -124,7 +160,7 @@ export default function HodDashboardPage() {
             />
           </Card>
         </Col>
-        
+
         <Col span={6}>
           <Card>
             <Statistic
