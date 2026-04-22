@@ -1,38 +1,58 @@
 import { useEffect, useState } from 'react';
-
-import { Card, Table, Tag, Typography, Space, Spin } from 'antd';
-
-//mock data for now
-import { MOCK_QUERIES } from '../../mock/mockData';
+import { Card, Table, Tag, Typography, Space, Spin, Alert } from 'antd';
+import { useAuth } from '../../context/AuthContext';
 
 const { Title, Text } = Typography;
 
-const STATUS_COLORS = { pending: 'orange', approved: 'green', declined: 'red' };
+const STATUS_COLORS = {
+  pending: 'orange',
+  approved: 'green',
+  declined: 'red',
+};
 
 export default function AllQueriesPage() {
-  //used by api later
-  const[loading, setLoading] = useState(true);
-  const[queries, setQueries] = useState([]);
+  const { currentUser } = useAuth();
 
-  //replace this with api call later
+  const [loading, setLoading] = useState(true);
+  const [queries, setQueries] = useState([]);
+  const [error, setError] = useState('');
+
   useEffect(() => {
     const fetchQueries = async () => {
+      if (!currentUser?.username) {
+        setLoading(false);
+        setError('No logged-in user found.');
+        return;
+      }
+
       setLoading(true);
+      setError('');
 
       try {
-        await new Promise((res) => setTimeout(res, 500));
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/queries`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user': currentUser.username,
+          },
+        });
 
-        //replace with api response
-        setQueries(MOCK_QUERIES);
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to load queries.');
+        }
+
+        setQueries(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('Failed to load queries:', error);
+        setError(error.message || 'Unable to load queries.');
       } finally {
         setLoading(false);
       }
     };
 
     fetchQueries();
-  }, []);
+  }, [currentUser]);
 
   const columns = [
     { title: 'Staff Member', dataIndex: 'staffName', key: 'staffName' },
@@ -55,30 +75,32 @@ export default function AllQueriesPage() {
     },
   ];
 
-  //spinner sections; will load automatically with api later
-  if(loading){
-    return(
+  if (loading) {
+    return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '100px' }}>
         <Spin size="large" tip="Loading queries..." />
       </div>
-    )
+    );
+  }
+
+  if (error) {
+    return <Alert message="Unable to load queries" description={error} type="error" showIcon />;
   }
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <div>
         <Title level={4} style={{ margin: 0 }}>All Queries</Title>
-        <Text type="secondary">View all correction requests across the school (read-only)</Text>
+        <Text type="secondary">View all correction requests across the school</Text>
       </div>
 
-      {/*table section; data will come from api*/}
       <Card>
-        <Table 
-          columns={columns} 
-          dataSource={queries} 
-          rowKey="id" 
-          pagination={false} 
-          size="middle" 
+        <Table
+          columns={columns}
+          dataSource={queries}
+          rowKey="id"
+          pagination={false}
+          size="middle"
         />
       </Card>
     </Space>
