@@ -22,6 +22,25 @@ export async function setupDB(db) {
       staffId INTEGER
     );
   `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS workloads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      staffId INTEGER,
+      name TEXT,
+      department TEXT,
+      fte REAL,
+      teaching REAL,
+      assignedRole REAL,
+      service REAL,
+      hdSupervision REAL,
+      research REAL,
+      total REAL,
+      targetBand TEXT,
+      calcBand TEXT,
+      hasDiscrepancy INTEGER
+    );
+  `);
 }
 
 // Seed users
@@ -61,6 +80,25 @@ export async function seedUsers(db) {
 
       ('hos', 'password', 'Head of School', 'hos', NULL, 22),
       ('ops', 'password', 'School Operations', 'operations', NULL, 23)
+    `);
+  }
+}
+
+//Seed Workload
+
+export async function seedWorkloads(db) {
+  const existing = await db.all("SELECT * FROM workloads");
+
+  if (existing.length === 0) {
+    console.log("Seeding workloads...");
+
+    await db.run(`
+      INSERT INTO workloads 
+      (staffId, name, department, fte, teaching, assignedRole, service, hdSupervision, research, total, targetBand, calcBand, hasDiscrepancy)
+      VALUES
+      (1, 'Dummy, 01', 'CSSE', 1.0, 24.99, 50.0, 10.0, 4.0, 11.01, 100, 'Balanced T&R', 'Balanced T&R', 0),
+      (2, 'Dummy, 02', 'CSSE', 0.92, 30.03, 0.0, 9.2, 0.0, 52.77, 92, 'Balanced T&R', 'Balanced T&R', 0),
+      (3, 'Dummy, 03', 'CSSE', 0.92, 7.54, 0.0, 9.2, 1.0, 74.26, 92, 'Balanced T&R', 'Research Focused', 1)
     `);
   }
 }
