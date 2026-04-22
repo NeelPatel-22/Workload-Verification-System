@@ -1,14 +1,10 @@
 import { createContext, useContext, useState } from 'react';
 
 /**
- * AuthContext provides global authentication state across the app.
- * Exposes: currentUser, login(), logout()
- *
- * currentUser shape (set after successful login):
- * { id, username, name, role, department, staffId }
- *
- * User session is persisted in localStorage so the user stays logged in on page refresh.
- * Note: auth is currently localStorage-based (no JWT tokens); backend uses x-user header for identity.
+ * AuthContext manages login state for the whole app.
+ * After a successful login, the user object is stored in localStorage so the session
+ * survives a page refresh. The backend currently identifies users via an x-user header
+ * (no JWT tokens yet).
  */
 const AuthContext = createContext(null);
 
