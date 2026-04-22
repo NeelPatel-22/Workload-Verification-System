@@ -1,10 +1,21 @@
 import { createContext, useContext, useState } from 'react';
 
+/**
+ * AuthContext provides global authentication state across the app.
+ * Exposes: currentUser, login(), logout()
+ *
+ * currentUser shape (set after successful login):
+ * { id, username, name, role, department, staffId }
+ *
+ * User session is persisted in localStorage so the user stays logged in on page refresh.
+ * Note: auth is currently localStorage-based (no JWT tokens); backend uses x-user header for identity.
+ */
 const AuthContext = createContext(null);
 
 const STORAGE_KEY = 'wvs_current_user';
 
 export function AuthProvider({ children }) {
+  // Initialise from localStorage so session survives page refresh
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -14,6 +25,7 @@ export function AuthProvider({ children }) {
     }
   });
 
+  // Sends credentials to the backend; on success, saves user to state and localStorage
   async function login(username, password) {
     try {
       const response = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/login`, {
@@ -48,6 +60,7 @@ export function AuthProvider({ children }) {
     }
   }
 
+  // Clears session from both state and localStorage
   function logout() {
     localStorage.removeItem(STORAGE_KEY);
     setCurrentUser(null);

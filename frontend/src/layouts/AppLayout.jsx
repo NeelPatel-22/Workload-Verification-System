@@ -15,6 +15,11 @@ import { useAuth } from '../context/AuthContext';
 const { Sider, Content } = Layout;
 const { Text } = Typography;
 
+/**
+ * Sidebar menu items keyed by role.
+ * Each role only sees the pages relevant to their access level.
+ * HoS and School Operations share the same menu items (both use /admin/... routes).
+ */
 const MENU_ITEMS_BY_ROLE = {
   staff: [
     { key: '/staff/workload', icon: <FileTextOutlined />, label: 'My Workload' },
@@ -41,6 +46,7 @@ const MENU_ITEMS_BY_ROLE = {
   ],
 };
 
+// Human-readable role labels shown in the topbar under the user's name
 const ROLE_LABELS = {
   staff: 'Academic Staff',
   hod: 'Head of Department',
@@ -48,6 +54,14 @@ const ROLE_LABELS = {
   operations: 'School Operations',
 };
 
+/**
+ * AppLayout renders the shared shell for all authenticated pages:
+ * - Left sidebar (dark blue) with role-specific navigation menu
+ * - Top bar with logged-in user info and logout dropdown
+ * - Main content area where child routes (via <Outlet />) are rendered
+ *
+ * This component is only reached after ProtectedRoute confirms the user is authenticated.
+ */
 export default function AppLayout() {
   const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
