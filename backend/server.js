@@ -166,7 +166,7 @@ app.get(
       return res.json(deptIssues);
     }
 
-    return res.json(generatedIssuesIssues);
+    return res.json(generatedIssues);
   }
 );
 
