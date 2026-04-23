@@ -1,15 +1,15 @@
-import { Card, Table, Tag, Typography, Button, Modal, Form, Input, Space, Select, Spin } from 'antd';
-
+import { Card, Table, Tag, Typography, Button, Modal, Form, Input, Space, Select, Spin, Alert } from 'antd';
 import { useState, useEffect } from 'react';
-
 import { useAuth } from '../../context/AuthContext';
-
-import { MOCK_QUERIES } from '../../mock/mockData';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
-const STATUS_COLORS = { pending: 'orange', approved: 'green', declined: 'red' };
+const STATUS_COLORS = {
+  pending: 'orange',
+  approved: 'green',
+  declined: 'red',
+};
 
 export default function ReviewQueriesPage() {
   const { currentUser } = useAuth();
@@ -17,49 +17,95 @@ export default function ReviewQueriesPage() {
   const [loading, setLoading] = useState(true);
   const [queries, setQueries] = useState([]);
   const [selectedQuery, setSelectedQuery] = useState(null);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const [form] = Form.useForm();
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!currentUser?.username) {
+        setLoading(false);
+        setError('No logged-in user found.');
+        return;
+      }
+
       setLoading(true);
+      setError('');
 
       try {
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/queries`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user': currentUser.username,
+          },
+        });
 
-        //currently we filter by department, replace with api call
-        setQueries(
-          MOCK_QUERIES.filter(
-            (q) => q.department === currentUser.department
-          )
-        );
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to load queries.');
+        }
+
+        setQueries(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('Error fetching queries:', error);
+        setError(error.message || 'Unable to load queries.');
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, [currentUser.department]);
+  }, [currentUser]);
 
-  //open modal for review
   function openReview(query) {
     setSelectedQuery(query);
-    form.setFieldsValue({ status: query.status, hodComment: query.hodComment || '' });
+    form.setFieldsValue({
+      status: query.status,
+      hodComment: query.hodComment || '',
+    });
   }
 
-  //save updated data
-  function handleSubmit(values) {
-    setQueries((prev) =>
-      prev.map((q) =>
-        q.id === selectedQuery.id
-          ? { ...q, status: values.status, hodComment: values.hodComment }
-          : q
-      )
-    );
-    setSelectedQuery(null);
-    form.resetFields();
+  async function handleSubmit(values) {
+    if (!selectedQuery) return;
+
+    setSaving(true);
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL}/api/queries/${selectedQuery.id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user': currentUser.username,
+          },
+          body: JSON.stringify({
+            status: values.status,
+            hodComment: values.hodComment,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to update query.');
+      }
+
+      setQueries((prev) =>
+        prev.map((q) => (q.id === selectedQuery.id ? data.query : q))
+      );
+
+      setSelectedQuery(null);
+      form.resetFields();
+    } catch (error) {
+      console.error('Failed to update query:', error);
+      setError(error.message || 'Unable to update query.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   const columns = [
@@ -88,12 +134,15 @@ export default function ReviewQueriesPage() {
   if (loading) {
     return (
       <div style={{ textAlign: 'center', marginTop: '100px' }}>
-        <Spin size="large" description='Loading queries...'/>
+        <Spin size="large" tip="Loading queries..." />
       </div>
     );
   }
 
-  //main ui
+  if (error && !selectedQuery) {
+    return <Alert message="Unable to load queries" description={error} type="error" showIcon />;
+  }
+
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <div>
@@ -101,12 +150,26 @@ export default function ReviewQueriesPage() {
         <Text type="secondary">Manage correction requests from your department</Text>
       </div>
 
-      {/*table component*/}
+      {error && (
+        <Alert
+          message="Request issue"
+          description={error}
+          type="error"
+          showIcon
+        />
+      )}
+
       <Card>
-        <Table columns={columns} dataSource={queries} rowKey="id" pagination={false} size="middle" locale={{ emptyText: 'No queries found' }} />
+        <Table
+          columns={columns}
+          dataSource={queries}
+          rowKey="id"
+          pagination={false}
+          size="middle"
+          locale={{ emptyText: 'No queries found' }}
+        />
       </Card>
 
-      {/*modal review component*/}
       <Modal
         title="Review Query"
         open={!!selectedQuery}
@@ -123,7 +186,6 @@ export default function ReviewQueriesPage() {
               <p style={{ marginTop: 8 }}>{selectedQuery.message}</p>
             </Card>
 
-            {/*review form*/}
             <Form form={form} layout="vertical" onFinish={handleSubmit}>
               <Form.Item name="status" label="Decision" rules={[{ required: true }]}>
                 <Select>
@@ -140,7 +202,9 @@ export default function ReviewQueriesPage() {
               <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
                 <Space>
                   <Button onClick={() => setSelectedQuery(null)}>Cancel</Button>
-                  <Button type="primary" htmlType="submit">Save Decision</Button>
+                  <Button type="primary" htmlType="submit" loading={saving}>
+                    Save Decision
+                  </Button>
                 </Space>
               </Form.Item>
             </Form>

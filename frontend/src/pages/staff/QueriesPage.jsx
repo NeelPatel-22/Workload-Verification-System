@@ -1,11 +1,7 @@
-import { Card, Table, Tag, Typography, Button, Modal, Form, Input, Space, Empty, Spin } from 'antd';
+import { Card, Table, Tag, Typography, Button, Modal, Form, Input, Space, Empty, Spin, Alert } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
-
 import { useState, useEffect } from 'react';
-
 import { useAuth } from '../../context/AuthContext';
-
-import { MOCK_QUERIES } from '../../mock/mockData';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -19,53 +15,87 @@ const STATUS_COLORS = {
 export default function StaffQueriesPage() {
   const { currentUser } = useAuth();
 
-  const[loading, setLoading] = useState(true);
-  const[queries, setQueries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [queries, setQueries] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const [form] = Form.useForm();
 
-  // const [queries, setQueries] = useState(
-  //   MOCK_QUERIES.filter((q) => q.staffId === currentUser.id)
-  // );
   useEffect(() => {
-    const fetchQueries = async() => {
+    const fetchQueries = async () => {
+      if (!currentUser?.username) {
+        setLoading(false);
+        setError('No logged-in user found.');
+        return;
+      }
+
       setLoading(true);
+      setError('');
 
-      try{
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/queries/my`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user': currentUser.username,
+          },
+        });
 
-        setQueries(MOCK_QUERIES.filter((q) => q.staffId === currentUser.id))
-      }catch(error){
-        console.error('Failed to load queries:', error)
-      }finally{
-        setLoading(false)
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to load queries.');
+        }
+
+        setQueries(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error('Failed to load queries:', error);
+        setError(error.message || 'Unable to load queries.');
+      } finally {
+        setLoading(false);
       }
     };
 
     fetchQueries();
-  },[currentUser.id])
+  }, [currentUser]);
 
-  //add new query
-  function handleSubmit(values) {
-    const newQuery = {
-      id: Date.now(),
-      staffId: currentUser.id,
-      staffName: currentUser.name,
-      department: currentUser.department,
-      subject: values.subject,
-      message: values.message,
-      status: 'pending',
-      submittedAt: new Date().toISOString().slice(0, 10),
-      hodComment: null,
-    };
+  async function handleSubmit(values) {
+    if (!currentUser?.username) return;
 
-    setQueries((prev) => [...prev, newQuery]);
-    form.resetFields();
-    setModalOpen(false);
+    setSubmitting(true);
+    setError('');
+
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/queries`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user': currentUser.username,
+        },
+        body: JSON.stringify({
+          subject: values.subject,
+          message: values.message,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to submit query.');
+      }
+
+      setQueries((prev) => [...prev, data.query]);
+      form.resetFields();
+      setModalOpen(false);
+    } catch (error) {
+      console.error('Failed to submit query:', error);
+      setError(error.message || 'Unable to submit query.');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  //table columns
   const columns = [
     { title: 'Date', dataIndex: 'submittedAt', key: 'submittedAt', width: 110 },
     { title: 'Subject', dataIndex: 'subject', key: 'subject' },
@@ -98,14 +128,21 @@ export default function StaffQueriesPage() {
         </Button>
       </div>
 
-      {/*table with spinner*/}
+      {error && (
+        <Alert
+          message="Query issue"
+          description={error}
+          type="error"
+          showIcon
+        />
+      )}
+
       <Card>
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px' }}>
-            <Spin size="large" description='Loading your queries...'/>
+            <Spin size="large" tip="Loading your queries..." />
           </div>
         ) : queries.length === 0 ? (
-          //empty state
           <Empty description="No queries submitted yet." />
         ) : (
           <Table
@@ -117,7 +154,6 @@ export default function StaffQueriesPage() {
         )}
       </Card>
 
-      {/*modal to submit query*/} 
       <Modal
         title="Submit a Query"
         open={modalOpen}
@@ -145,7 +181,9 @@ export default function StaffQueriesPage() {
           <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
             <Space>
               <Button onClick={() => setModalOpen(false)}>Cancel</Button>
-              <Button type="primary" htmlType="submit">Submit</Button>
+              <Button type="primary" htmlType="submit" loading={submitting}>
+                Submit
+              </Button>
             </Space>
           </Form.Item>
         </Form>

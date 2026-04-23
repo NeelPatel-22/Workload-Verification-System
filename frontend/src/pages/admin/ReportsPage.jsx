@@ -1,39 +1,54 @@
 import { useState, useEffect } from 'react';
-
-import { Card, Table, Typography, Space, Button, Divider, Spin } from 'antd';
+import { Card, Table, Typography, Space, Button, Divider, Spin, Alert } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
-
-//mock data
-import { MOCK_WORKLOAD } from '../../mock/mockData';
+import { useAuth } from '../../context/AuthContext';
 
 const { Title, Text } = Typography;
 
 export default function ReportsPage() {
-  //data will come from api call later
-  const[loading, setLoading] = useState(true);
-  const[workload, setWorkload] = useState([]);
+  const { currentUser } = useAuth();
 
-  //api call for mock data
+  const [loading, setLoading] = useState(true);
+  const [workload, setWorkload] = useState([]);
+  const [error, setError] = useState('');
+
   useEffect(() => {
     const fetchReportData = async () => {
+      if (!currentUser?.username) {
+        setLoading(false);
+        setError('No logged-in user found.');
+        return;
+      }
+
       setLoading(true);
+      setError('');
 
-      try{
-        await new Promise((res) => setTimeout(res, 500));
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/workloads`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user': currentUser.username,
+          },
+        });
 
-        //replace with api response
-        setWorkload(MOCK_WORKLOAD);
-      }catch(error){
-        console.error('Failed to load report data:', error)
-      }finally{
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to load report data.');
+        }
+
+        setWorkload(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error('Failed to load report data:', error);
+        setError(error.message || 'Unable to load report data.');
+      } finally {
         setLoading(false);
       }
     };
 
     fetchReportData();
-  }, []);
+  }, [currentUser]);
 
-  //table config
   const summaryColumns = [
     { title: 'Staff Member', dataIndex: 'name', key: 'name' },
     { title: 'Department', dataIndex: 'department', key: 'department' },
@@ -46,21 +61,22 @@ export default function ReportsPage() {
     { title: 'Total (%)', dataIndex: 'total', key: 'total', render: (v) => <Text strong>{v}%</Text> },
   ];
 
-  //file export function
   function handleExportPDF() {
     window.print();
   }
 
-  //for loading ui
-  if(loading){
-    return(
+  if (loading) {
+    return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '100px' }}>
-        <Spin size="large" tip="Generating report..."/>
+        <Spin size="large" tip="Generating report..." />
       </div>
-    )
+    );
   }
 
-  //main ui
+  if (error) {
+    return <Alert message="Unable to load report" description={error} type="error" showIcon />;
+  }
+
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
@@ -76,7 +92,8 @@ export default function ReportsPage() {
 
       <Card id="report-content">
         <div style={{ marginBottom: 16 }}>
-          <Text strong>School: </Text><Text>PMC (Physics, Maths, Computer Science)</Text>
+          <Text strong>School: </Text>
+          <Text>PMC (Physics, Maths, Computer Science)</Text>
           <Divider style={{ margin: '12px 0' }} />
         </div>
 
@@ -87,8 +104,10 @@ export default function ReportsPage() {
           pagination={false}
           size="middle"
           summary={(data) => {
-            const avgTotal = (data.reduce((s, r) => s + r.total, 0) / data.length).toFixed(1);
-            
+            const avgTotal = data.length
+              ? (data.reduce((s, r) => s + r.total, 0) / data.length).toFixed(1)
+              : 0;
+
             return (
               <Table.Summary.Row>
                 <Table.Summary.Cell index={0} colSpan={8}>
