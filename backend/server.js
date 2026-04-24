@@ -3,7 +3,6 @@ import cors from "cors";
 import dotenv from "dotenv";
 
 import { validateWorkloads } from "./validation.js";
-import { users, workloads, queries } from "./data/mock-data.js";
 
 import { initDB, setupDB, seedUsers } from "./db.js";
 
