@@ -1,7 +1,11 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+
+import { validateWorkloads } from "./validation.js";
+
 import { initDB, setupDB, seedUsers } from "./db.js";
+
 
 dotenv.config();
 
@@ -17,6 +21,10 @@ app.use(
 );
 
 app.use(express.json());
+
+// -----------------------------
+// Mock users aligned with frontend mockData.js
+// -----------------------------
 
 // DB setup
 let db;
@@ -57,19 +65,6 @@ const workloads = [
   { staffId: 18, name: "Dummy, 18", department: "Physics", fte: 1.0, teaching: 17.6, assignedRole: 0.0, service: 10.0, hdSupervision: 0.0, research: 72.4, total: 100, targetBand: "Research Focused", calcBand: "Research Focused", hasDiscrepancy: false },
 ];
 
-// -----------------------------
-// Mock validation issues
-// -----------------------------
-const validationIssues = [
-  { id: 1, staffId: 3, staffName: "Dummy, 03", department: "CSSE", type: "T:R Band Mismatch", severity: "warning", description: "Target band is Balanced T&R (0.50) but calculated ratio is 0.09 — classified as Research Focused." },
-  { id: 2, staffId: 4, staffName: "Dummy, 04", department: "CSSE", type: "T:R Band Mismatch", severity: "warning", description: "Target band is Balanced T&R (0.50) but calculated ratio is 0.09 — classified as Research Focused." },
-  { id: 3, staffId: 7, staffName: "Dummy, 07", department: "CSSE", type: "T:R Band Mismatch", severity: "warning", description: "Target band is Research Focused (0.00) but calculated ratio is 0.35 — classified as Balanced T&R." },
-  { id: 4, staffId: 11, staffName: "Dummy, 11", department: "Mathematics", type: "T:R Band Mismatch", severity: "warning", description: "Target band is Balanced T&R (0.50) but calculated ratio is 0.02 — classified as Research Focused." },
-  { id: 5, staffId: 12, staffName: "Dummy, 12", department: "Mathematics", type: "T:R Band Mismatch", severity: "warning", description: "Target band is Balanced T&R (0.50) but calculated ratio is 0.00 — classified as Research Focused." },
-  { id: 6, staffId: 14, staffName: "Dummy, 14", department: "Physics", type: "T:R Band Mismatch", severity: "warning", description: "Target band is Teaching Focused (0.90) but calculated ratio is 0.35 — classified as Balanced T&R." },
-  { id: 7, staffId: 15, staffName: "Dummy, 15", department: "Physics", type: "T:R Band Mismatch", severity: "warning", description: "Target band is Balanced T&R (0.50) but calculated ratio is 0.02 — classified as Research Focused." },
-  { id: 8, staffId: 17, staffName: "Dummy, 17", department: "Physics", type: "T:R Band Mismatch", severity: "warning", description: "Target band is Balanced T&R (0.50) but calculated ratio is 0.12 — classified as Research Focused." },
-];
 
 // -----------------------------
 // Mock queries
@@ -109,6 +104,7 @@ let queries = [
     hodComment: "After review, the allocation is correct based on your current-year assigned duties. Please contact HR if you believe your contract classification has changed.",
   },
 ];
+
 
 // -----------------------------
 // Helpers
@@ -240,7 +236,8 @@ app.get(
   mockAuth,
   authorizeRoles("staff"),
   (req, res) => {
-    const myIssues = validationIssues.filter(
+    const generatedIssues = validateWorkloads(workloads);
+    const myIssues = generatedIssues.filter(
       (issue) => issue.staffId === req.user.staffId
     );
     res.json(myIssues);
@@ -253,14 +250,16 @@ app.get(
   mockAuth,
   authorizeRoles("hod", "hos", "operations"),
   (req, res) => {
+    const generatedIssues = validateWorkloads(workloads)
+
     if (req.user.role === "hod") {
-      const deptIssues = validationIssues.filter(
+      const deptIssues = generatedIssues.filter(
         (issue) => issue.department === req.user.department
       );
       return res.json(deptIssues);
     }
 
-    return res.json(validationIssues);
+    return res.json(generatedIssues);
   }
 );
 
