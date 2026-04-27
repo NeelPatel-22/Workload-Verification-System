@@ -35,7 +35,7 @@ async function startServer() {
 startServer();
 
 // -----------------------------
-// Mock queries (kept as in-memory for now)
+// // In-memory query store (to be migrated to DB in future)
 // -----------------------------
 let queries = [
   {
