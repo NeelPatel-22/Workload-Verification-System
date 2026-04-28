@@ -1,14 +1,14 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { initDB, setupDB, seedUsers, seedWorkloads } from "./db.js";
+import { initDB, setupDB, seedUsers, seedWorkloads, seedQueries } from "./db.js";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
+// basic middleware
 app.use(
   cors({
     origin: "http://localhost:5173",
@@ -18,42 +18,29 @@ app.use(
 
 app.use(express.json());
 
-// DB setup
+// database instance
 let db;
 
+// start server + initialise DB
 async function startServer() {
   db = await initDB();
   await setupDB(db);
   await seedUsers(db);
   await seedWorkloads(db);
+  await seedQueries(db); // now queries also come from DB
 
   app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+    console.log(`Server running at http://localhost:${PORT}`);
   });
 }
 
 startServer();
 
 // -----------------------------
-// // In-memory query store (to be migrated to DB in future)
+// AUTH HELPERS
 // -----------------------------
-let queries = [
-  {
-    id: 1,
-    staffId: 3,
-    staffName: "Dummy, 03",
-    department: "CSSE",
-    subject: "Teaching allocation appears too low",
-    message: "My target is Balanced T&R but my teaching allocation seems much lower than expected. Please review.",
-    status: "pending",
-    submittedAt: "2026-03-18",
-    hodComment: null,
-  },
-];
 
-// -----------------------------
-// Helpers
-// -----------------------------
+// simple header-based auth (used across routes)
 async function mockAuth(req, res, next) {
   try {
     const username = req.headers["x-user"];
@@ -73,15 +60,16 @@ async function mockAuth(req, res, next) {
 
     req.user = user;
     next();
-  } catch (error) {
-    console.error(error);
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "Auth error" });
   }
 }
 
-function authorizeRoles(...allowedRoles) {
+// role-based access control
+function authorizeRoles(...roles) {
   return (req, res, next) => {
-    if (!req.user || !allowedRoles.includes(req.user.role)) {
+    if (!req.user || !roles.includes(req.user.role)) {
       return res.status(403).json({ message: "Access denied" });
     }
     next();
@@ -89,27 +77,24 @@ function authorizeRoles(...allowedRoles) {
 }
 
 // -----------------------------
-// Routes
+// BASIC ROUTES
 // -----------------------------
+
 app.get("/", (req, res) => {
-  res.json({ message: "Workload Verification System backend is running" });
+  res.json({ message: "Backend is running" });
 });
 
 app.get("/api/health", (req, res) => {
-  res.status(200).json({ success: true, message: "Backend is healthy" });
+  res.json({ success: true });
 });
 
-// Login
+// -----------------------------
+// AUTH ROUTES
+// -----------------------------
+
 app.post("/api/auth/login", async (req, res) => {
   try {
     const { username, password } = req.body;
-
-    if (!username || !password) {
-      return res.status(400).json({
-        success: false,
-        message: "Username and password are required",
-      });
-    }
 
     const user = await db.get(
       "SELECT * FROM users WHERE username = ? AND password = ?",
@@ -123,127 +108,85 @@ app.post("/api/auth/login", async (req, res) => {
       });
     }
 
+    const { password: _, ...safeUser } = user;
+
     res.json({
       success: true,
-      message: "Login successful",
-      user: {
-        id: user.id,
-        username: user.username,
-        name: user.name,
-        role: user.role,
-        department: user.department,
-        staffId: user.staffId,
-      },
+      user: safeUser,
     });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
-// Current user
 app.get("/api/auth/me", mockAuth, (req, res) => {
   const { password, ...safeUser } = req.user;
   res.json(safeUser);
 });
 
 // -----------------------------
-// WORKLOAD ROUTES
+// WORKLOAD ROUTES (DB)
 // -----------------------------
 
-// Staff: view own workload
-app.get(
-  "/api/workloads/my",
-  mockAuth,
-  authorizeRoles("staff"),
-  async (req, res) => {
-    try {
-      const workload = await db.get(
-        "SELECT * FROM workloads WHERE staffId = ?",
-        [req.user.staffId]
+// staff → own workload
+app.get("/api/workloads/my", mockAuth, authorizeRoles("staff"), async (req, res) => {
+  try {
+    const workload = await db.get(
+      "SELECT * FROM workloads WHERE staffId = ?",
+      [req.user.staffId]
+    );
+
+    if (!workload) {
+      return res.status(404).json({ message: "Workload not found" });
+    }
+
+    res.json(workload);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// HoD / Admin → workloads
+app.get("/api/workloads", mockAuth, authorizeRoles("hod", "hos", "operations"), async (req, res) => {
+  try {
+    if (req.user.role === "hod") {
+      const data = await db.all(
+        "SELECT * FROM workloads WHERE department = ?",
+        [req.user.department]
       );
-
-      if (!workload) {
-        return res.status(404).json({ message: "Workload not found" });
-      }
-
-      res.json(workload);
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Server error" });
+      return res.json(data);
     }
-  }
-);
 
-// HoD / HoS / Operations: view workloads
-app.get(
-  "/api/workloads",
-  mockAuth,
-  authorizeRoles("hod", "hos", "operations"),
-  async (req, res) => {
-    try {
-      if (req.user.role === "hod") {
-        const deptWorkloads = await db.all(
-          "SELECT * FROM workloads WHERE department = ?",
-          [req.user.department]
-        );
-        return res.json(deptWorkloads);
-      }
-
-      const allWorkloads = await db.all("SELECT * FROM workloads");
-      return res.json(allWorkloads);
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Server error" });
-    }
+    const all = await db.all("SELECT * FROM workloads");
+    res.json(all);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
   }
-);
+});
 
 // -----------------------------
-// VALIDATION ISSUES ROUTES
-// (dynamically generated from workloads DB)
+// VALIDATION (based on DB)
 // -----------------------------
 
 function generateValidationIssues(workloads) {
   const issues = [];
-  let idCounter = 1;
 
   for (const w of workloads) {
-    const total = w.teaching + w.assignedRole + w.service + w.hdSupervision + w.research;
+    const total =
+      (w.teaching || 0) +
+      (w.assignedRole || 0) +
+      (w.service || 0) +
+      (w.hdSupervision || 0) +
+      (w.research || 0);
 
-    // Check total does not sum to 100
     if (Math.abs(total - 100) > 0.01) {
       issues.push({
-        id: idCounter++,
         staffId: w.staffId,
-        staffName: w.name,
-        department: w.department,
-        type: "FTE Total Mismatch",
-        severity: "warning",
-        description: `Workload components sum to ${total.toFixed(1)} instead of 100.`,
-      });
-    }
-
-    // Check T:R band mismatch
-    const researchRatio = w.total > 0 ? w.research / w.total : 0;
-    const teachingRatio = w.total > 0 ? w.teaching / w.total : 0;
-
-    let calcBand = "Balanced T&R";
-    if (researchRatio > 0.6) calcBand = "Research Focused";
-    else if (teachingRatio > 0.6) calcBand = "Teaching Focused";
-
-    if (w.targetBand && w.targetBand !== calcBand) {
-      issues.push({
-        id: idCounter++,
-        staffId: w.staffId,
-        staffName: w.name,
-        department: w.department,
-        type: "T:R Band Mismatch",
-        severity: "warning",
-        description: `Target band is ${w.targetBand} but calculated band is ${calcBand}.`,
+        name: w.name,
+        issue: `Total is ${total}, expected 100`,
       });
     }
   }
@@ -251,158 +194,121 @@ function generateValidationIssues(workloads) {
   return issues;
 }
 
-// Staff: view own validation issues
-app.get(
-  "/api/validation-issues/my",
-  mockAuth,
-  authorizeRoles("staff"),
-  async (req, res) => {
-    try {
-      const workloads = await db.all(
-        "SELECT * FROM workloads WHERE staffId = ?",
-        [req.user.staffId]
-      );
-      const issues = generateValidationIssues(workloads);
-      res.json(issues);
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Server error" });
-    }
-  }
-);
-
-// HoD / HoS / Operations: view validation issues
-app.get(
-  "/api/validation-issues",
-  mockAuth,
-  authorizeRoles("hod", "hos", "operations"),
-  async (req, res) => {
-    try {
-      let workloads;
-
-      if (req.user.role === "hod") {
-        workloads = await db.all(
-          "SELECT * FROM workloads WHERE department = ?",
-          [req.user.department]
-        );
-      } else {
-        workloads = await db.all("SELECT * FROM workloads");
-      }
-
-      const issues = generateValidationIssues(workloads);
-      res.json(issues);
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Server error" });
-    }
-  }
-);
-
-// -----------------------------
-// QUERIES ROUTES
-// -----------------------------
-
-// HoD / HoS / Operations: view all queries
-app.get(
-  "/api/queries",
-  mockAuth,
-  authorizeRoles("hod", "hos", "operations"),
-  (req, res) => {
-    try {
-      if (req.user.role === "hod") {
-        const deptQueries = queries.filter(
-          (q) => q.department === req.user.department
-        );
-        return res.json(deptQueries);
-      }
-
-      return res.json(queries);
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Server error" });
-    }
-  }
-);
-
-// Staff: get own queries
-app.get(
-  "/api/queries/my",
-  mockAuth,
-  authorizeRoles("staff"),
-  (req, res) => {
-    try {
-      const myQueries = queries.filter(
-        (q) => q.staffId === req.user.staffId
-      );
-      res.json(myQueries);
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Server error" });
-    }
-  }
-);
-
-// Staff: submit a query
-app.post("/api/queries", mockAuth, authorizeRoles("staff"), (req, res) => {
+// staff → own issues
+app.get("/api/validation-issues/my", mockAuth, authorizeRoles("staff"), async (req, res) => {
   try {
-    const { subject, message } = req.body;
-
-    if (!subject || !message) {
-      return res.status(400).json({
-        message: "Subject and message are required",
-      });
-    }
-
-    const newQuery = {
-      id: queries.length + 1,
-      staffId: req.user.staffId,
-      staffName: req.user.name,
-      department: req.user.department,
-      subject,
-      message,
-      status: "pending",
-      submittedAt: new Date().toISOString().split("T")[0],
-      hodComment: null,
-    };
-
-    queries.push(newQuery);
-
-    res.status(201).json({
-      message: "Query submitted successfully",
-      query: newQuery,
-    });
-  } catch (error) {
-    console.error(error);
+    const data = await db.all(
+      "SELECT * FROM workloads WHERE staffId = ?",
+      [req.user.staffId]
+    );
+    res.json(generateValidationIssues(data));
+  } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// HoD / HoS / Operations: update a query
-app.patch(
-  "/api/queries/:id",
-  mockAuth,
-  authorizeRoles("hod", "hos", "operations"),
-  (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const { status, hodComment } = req.body;
+// HoD/Admin → issues
+app.get("/api/validation-issues", mockAuth, authorizeRoles("hod", "hos", "operations"), async (req, res) => {
+  try {
+    let data;
 
-      const query = queries.find((q) => q.id === id);
-
-      if (!query) {
-        return res.status(404).json({ message: "Query not found" });
-      }
-
-      if (status) query.status = status;
-      if (hodComment) query.hodComment = hodComment;
-
-      res.json({
-        message: "Query updated successfully",
-        query,
-      });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Server error" });
+    if (req.user.role === "hod") {
+      data = await db.all(
+        "SELECT * FROM workloads WHERE department = ?",
+        [req.user.department]
+      );
+    } else {
+      data = await db.all("SELECT * FROM workloads");
     }
+
+    res.json(generateValidationIssues(data));
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
   }
-);
+});
+
+// -----------------------------
+// QUERIES ROUTES (NOW DB)
+// -----------------------------
+
+// HoD/Admin → all queries
+app.get("/api/queries", mockAuth, authorizeRoles("hod", "hos", "operations"), async (req, res) => {
+  try {
+    if (req.user.role === "hod") {
+      const data = await db.all(
+        "SELECT * FROM queries WHERE department = ?",
+        [req.user.department]
+      );
+      return res.json(data);
+    }
+
+    const all = await db.all("SELECT * FROM queries");
+    res.json(all);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// staff → own queries
+app.get("/api/queries/my", mockAuth, authorizeRoles("staff"), async (req, res) => {
+  try {
+    const data = await db.all(
+      "SELECT * FROM queries WHERE staffId = ?",
+      [req.user.staffId]
+    );
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// submit query
+app.post("/api/queries", mockAuth, authorizeRoles("staff"), async (req, res) => {
+  try {
+    const { subject, message } = req.body;
+
+    await db.run(
+      `INSERT INTO queries 
+      (staffId, staffName, department, subject, message, status, submittedAt, hodComment)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        req.user.staffId,
+        req.user.name,
+        req.user.department,
+        subject,
+        message,
+        "pending",
+        new Date().toISOString().split("T")[0],
+        null,
+      ]
+    );
+
+    res.json({ message: "Query submitted" });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// update query
+app.patch("/api/queries/:id", mockAuth, authorizeRoles("hod", "hos", "operations"), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { status, hodComment } = req.body;
+
+    const existing = await db.get("SELECT * FROM queries WHERE id = ?", [id]);
+
+    if (!existing) {
+      return res.status(404).json({ message: "Query not found" });
+    }
+
+    await db.run(
+      "UPDATE queries SET status = ?, hodComment = ? WHERE id = ?",
+      [status, hodComment, id]
+    );
+
+    res.json({ message: "Query updated" });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
