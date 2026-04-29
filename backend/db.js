@@ -11,7 +11,7 @@ export async function initDB() {
 
 // Create tables if they don’t exist
 export async function setupDB(db) {
-  // Users table (login + roles)
+  // Users table
   await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,7 +44,7 @@ export async function setupDB(db) {
     );
   `);
 
-  // Queries table (NEW)
+  // Queries table
   await db.exec(`
     CREATE TABLE IF NOT EXISTS queries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,9 +60,7 @@ export async function setupDB(db) {
   `);
 }
 
-// -----------------------------
-// Seed Users (unchanged)
-// -----------------------------
+// Seed Users 
 export async function seedUsers(db) {
   const existing = await db.all("SELECT * FROM users");
 
@@ -103,9 +101,7 @@ export async function seedUsers(db) {
   }
 }
 
-// -----------------------------
-// Seed Workloads
-// -----------------------------
+// Seed Workloads 
 export async function seedWorkloads(db) {
   const existing = await db.all("SELECT * FROM workloads");
 
@@ -129,9 +125,7 @@ export async function seedWorkloads(db) {
   }
 }
 
-// -----------------------------
-// Seed Queries (NEW)
-// -----------------------------
+// Seed Queries
 export async function seedQueries(db) {
   const existing = await db.all("SELECT * FROM queries");
 
