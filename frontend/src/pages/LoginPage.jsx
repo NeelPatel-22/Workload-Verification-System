@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 
 const { Title, Text } = Typography;
 
+// Maps each role to its default landing page after a successful login
 const ROLE_REDIRECTS = {
   staff: '/staff/workload',
   hod: '/hod/dashboard',
@@ -13,6 +14,7 @@ const ROLE_REDIRECTS = {
   operations: '/admin/dashboard',
 };
 
+// Pre-set demo accounts for development/demo use only — all share the same password "password"
 const DEMO_ACCOUNTS = [
   { label: 'Academic Staff – Dummy 01 (CSSE)', value: 'dummy01' },
   { label: 'Academic Staff – Dummy 14 (Physics, T:R issue)', value: 'dummy14' },
@@ -23,6 +25,12 @@ const DEMO_ACCOUNTS = [
   { label: 'School Operations', value: 'ops' },
 ];
 
+/**
+ * LoginPage handles user authentication.
+ * - Calls AuthContext.login() which posts credentials to /api/auth/login
+ * - On success, redirects to the user's role-specific default page
+ * - Quick fill dropdown pre-fills credentials for demo/development use
+ */
 export default function LoginPage() {
   const [error, setError] = useState('');
   const [form] = Form.useForm();

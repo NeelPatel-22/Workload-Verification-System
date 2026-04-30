@@ -14,6 +14,11 @@ import AllQueriesPage from './pages/admin/AllQueriesPage';
 import ReportsPage from './pages/admin/ReportsPage';
 import ImportData from './pages/admin/ImportData';
 
+/**
+ * Redirects users from the root path "/" to their role-specific default page.
+ * If no user is logged in, redirects to /login.
+ * HoS and School Operations both land on the same admin dashboard (MVP scope).
+ */
 function RootRedirect() {
   const { currentUser } = useAuth();
 
@@ -29,6 +34,16 @@ function RootRedirect() {
   return <Navigate to={roleDefaults[currentUser.role] || '/login'} replace />;
 }
 
+/**
+ * Root application component.
+ * Wraps the entire app in AuthProvider (global auth state) and BrowserRouter (client-side routing).
+ *
+ * Route structure:
+ * - /login         → public, no auth required
+ * - /              → redirects based on role
+ * - All other routes are nested inside a top-level ProtectedRoute that renders AppLayout (sidebar + topbar).
+ *   Each nested route has its own ProtectedRoute to restrict access by role.
+ */
 export default function App() {
   return (
     <AuthProvider>
@@ -37,6 +52,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<RootRedirect />} />
 
+          {/* All authenticated pages share AppLayout (sidebar + topbar) */}
           <Route
             element={
               <ProtectedRoute allowedRoles={['staff', 'hod', 'hos', 'operations']}>

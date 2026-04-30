@@ -1,10 +1,17 @@
 import { createContext, useContext, useState } from 'react';
 
+/**
+ * AuthContext manages login state for the whole app.
+ * After a successful login, the user object is stored in localStorage so the session
+ * survives a page refresh. The backend currently identifies users via an x-user header
+ * (no JWT tokens yet).
+ */
 const AuthContext = createContext(null);
 
 const STORAGE_KEY = 'wvs_current_user';
 
 export function AuthProvider({ children }) {
+  // Initialise from localStorage so session survives page refresh
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -14,6 +21,7 @@ export function AuthProvider({ children }) {
     }
   });
 
+  // Sends credentials to the backend; on success, saves user to state and localStorage
   async function login(username, password) {
     try {
       const response = await fetch("http://localhost:5000/api/auth/login", {
@@ -48,6 +56,7 @@ export function AuthProvider({ children }) {
     }
   }
 
+  // Clears session from both state and localStorage
   function logout() {
     localStorage.removeItem(STORAGE_KEY);
     setCurrentUser(null);
