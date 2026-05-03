@@ -24,7 +24,7 @@ export async function setupDB(db) {
     );
   `);
 
-  // Workloads table
+  // Workloads summary table used by existing dashboards
   await db.exec(`
     CREATE TABLE IF NOT EXISTS workloads (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,9 +58,155 @@ export async function setupDB(db) {
       hodComment TEXT
     );
   `);
+
+  // Tracks each uploaded Excel workbook import
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS import_batches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      filename TEXT,
+      uploadedBy TEXT,
+      importedAt TEXT,
+      status TEXT,
+      staffCount INTEGER DEFAULT 0,
+      unitCount INTEGER DEFAULT 0,
+      roleCount INTEGER DEFAULT 0,
+      teachingRowCount INTEGER DEFAULT 0,
+      hdrRowCount INTEGER DEFAULT 0,
+      assignedRoleRowCount INTEGER DEFAULT 0,
+      workloadCount INTEGER DEFAULT 0,
+      issueCount INTEGER DEFAULT 0,
+      notes TEXT
+    );
+  `);
+
+  // Raw/cleaned source data from workbook sheets
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS staff_sources (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      importBatchId INTEGER,
+      staffId INTEGER,
+      staffMember TEXT,
+      staffName TEXT,
+      staffNumber TEXT,
+      staffType TEXT,
+      fte REAL,
+      function TEXT,
+      targetTeachingPercent REAL,
+      targetResearchPercent REAL,
+      targetTRBalance REAL,
+      targetBand TEXT,
+      department TEXT
+    );
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS units (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      importBatchId INTEGER,
+      unitCode TEXT,
+      unitName TEXT,
+      groupedUnit TEXT,
+      enrolment REAL,
+      expectedUCTariff REAL,
+      cwsHoursPerStudent REAL
+    );
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS roles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      importBatchId INTEGER,
+      category TEXT,
+      roleName TEXT,
+      hours REAL,
+      points REAL,
+      notes TEXT,
+      name TEXT,
+      rolePillars TEXT
+    );
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS teaching_workloads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      importBatchId INTEGER,
+      sourceRow INTEGER,
+      unitCode TEXT,
+      staffType TEXT,
+      staffMember TEXT,
+      staffId INTEGER,
+      enrolment REAL,
+      duplicateCount REAL,
+      totalTeachingHours REAL,
+      totalTeachingPoints REAL,
+      unitCoordinationPoints REAL,
+      teachingActivityPoints REAL,
+      unitSupervisionPoints REAL,
+      newUnitDevelopmentPoints REAL,
+      totalDepartmentHours REAL,
+      isUnitCoordinator TEXT
+    );
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS hdr_workloads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      importBatchId INTEGER,
+      sourceRow INTEGER,
+      staffMember TEXT,
+      staffId INTEGER,
+      fullTimeStudents REAL,
+      fullTimeProportion REAL,
+      partTimeStudents REAL,
+      partTimeProportion REAL,
+      totalSupervisionHours REAL,
+      workloadPoints REAL
+    );
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS assigned_role_workloads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      importBatchId INTEGER,
+      sourceRow INTEGER,
+      staffMember TEXT,
+      staffId INTEGER,
+      fte REAL,
+      selfDirectedServicePoints REAL,
+      assignedRoleTotalPoints REAL,
+      role1 TEXT,
+      points1 REAL,
+      role2 TEXT,
+      points2 REAL,
+      role3 TEXT,
+      points3 REAL,
+      role4 TEXT,
+      points4 REAL,
+      role5 TEXT,
+      points5 REAL,
+      role6 TEXT,
+      points6 REAL
+    );
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS validation_issues (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      importBatchId INTEGER,
+      staffId INTEGER,
+      staffName TEXT,
+      department TEXT,
+      type TEXT,
+      severity TEXT,
+      description TEXT,
+      sourceSheet TEXT,
+      sourceRow INTEGER,
+      createdAt TEXT
+    );
+  `);
 }
 
-// Seed Users 
+// Seed Users
 export async function seedUsers(db) {
   const existing = await db.all("SELECT * FROM users");
 
@@ -101,7 +247,7 @@ export async function seedUsers(db) {
   }
 }
 
-// Seed Workloads 
+// Seed Workloads
 export async function seedWorkloads(db) {
   const existing = await db.all("SELECT * FROM workloads");
 
@@ -118,7 +264,7 @@ export async function seedWorkloads(db) {
     }
 
     await db.run(`
-      INSERT INTO workloads 
+      INSERT INTO workloads
       (staffId, name, department, fte, teaching, assignedRole, service, hdSupervision, research, total, targetBand, calcBand, hasDiscrepancy)
       VALUES ${values.join(",")}
     `);
@@ -133,7 +279,7 @@ export async function seedQueries(db) {
     console.log("Seeding queries...");
 
     await db.run(`
-      INSERT INTO queries 
+      INSERT INTO queries
       (staffId, staffName, department, subject, message, status, submittedAt, hodComment)
       VALUES
       (3, 'Dummy, 03', 'CSSE', 'Teaching allocation issue', 'My teaching allocation seems low.', 'pending', '2026-03-18', NULL),
