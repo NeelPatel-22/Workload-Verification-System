@@ -1,7 +1,7 @@
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
 
-// Initialize DB
+// Create DB connection
 export async function initDB() {
   return open({
     filename: "./database.sqlite",
@@ -9,8 +9,9 @@ export async function initDB() {
   });
 }
 
-// Create tables
+// Create tables if they don’t exist
 export async function setupDB(db) {
+  // Users table
   await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,6 +24,7 @@ export async function setupDB(db) {
     );
   `);
 
+  // Workloads table
   await db.exec(`
     CREATE TABLE IF NOT EXISTS workloads (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,14 +43,29 @@ export async function setupDB(db) {
       hasDiscrepancy INTEGER
     );
   `);
+
+  // Queries table
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS queries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      staffId INTEGER,
+      staffName TEXT,
+      department TEXT,
+      subject TEXT,
+      message TEXT,
+      status TEXT,
+      submittedAt TEXT,
+      hodComment TEXT
+    );
+  `);
 }
 
-// Seed users (unchanged) :contentReference[oaicite:0]{index=0}
+// Seed Users 
 export async function seedUsers(db) {
-  const existingUsers = await db.all("SELECT * FROM users");
+  const existing = await db.all("SELECT * FROM users");
 
-  if (existingUsers.length === 0) {
-    console.log("Seeding users into database...");
+  if (existing.length === 0) {
+    console.log("Seeding users...");
 
     await db.run(`
       INSERT INTO users (username, password, name, role, department, staffId)
@@ -84,7 +101,7 @@ export async function seedUsers(db) {
   }
 }
 
-// Seed workloads (FIXED)
+// Seed Workloads 
 export async function seedWorkloads(db) {
   const existing = await db.all("SELECT * FROM workloads");
 
@@ -104,6 +121,23 @@ export async function seedWorkloads(db) {
       INSERT INTO workloads 
       (staffId, name, department, fte, teaching, assignedRole, service, hdSupervision, research, total, targetBand, calcBand, hasDiscrepancy)
       VALUES ${values.join(",")}
+    `);
+  }
+}
+
+// Seed Queries
+export async function seedQueries(db) {
+  const existing = await db.all("SELECT * FROM queries");
+
+  if (existing.length === 0) {
+    console.log("Seeding queries...");
+
+    await db.run(`
+      INSERT INTO queries 
+      (staffId, staffName, department, subject, message, status, submittedAt, hodComment)
+      VALUES
+      (3, 'Dummy, 03', 'CSSE', 'Teaching allocation issue', 'My teaching allocation seems low.', 'pending', '2026-03-18', NULL),
+      (10, 'Dummy, 10', 'Mathematics', 'Workload clarification', 'Need clarification on workload.', 'pending', '2026-03-18', NULL)
     `);
   }
 }
