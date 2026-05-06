@@ -38,6 +38,9 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
+  limits: {
+    fileSize: 15 * 1024 * 1024,
+  },
   fileFilter: (req, file, cb) => {
     const allowedExtensions = [".xlsm", ".xlsx", ".xls"];
     const ext = path.extname(file.originalname).toLowerCase();
@@ -121,6 +124,41 @@ function authorizeRoles(...roles) {
   };
 }
 
+async function getLatestImportBatch() {
+  return db.get("SELECT * FROM import_batches WHERE status = 'completed' ORDER BY id DESC LIMIT 1");
+}
+
+async function getVisibleWorkloads(user) {
+  const latestImport = await getLatestImportBatch();
+
+  const whereParts = [];
+  const params = [];
+
+  if (latestImport) {
+    whereParts.push("importBatchId = ?");
+    params.push(latestImport.id);
+  } else {
+    whereParts.push("importBatchId IS NULL");
+  }
+
+  if (user.role === "staff") {
+    whereParts.push("staffId = ?");
+    params.push(user.staffId);
+  }
+
+  if (user.role === "hod") {
+    whereParts.push("department = ?");
+    params.push(user.department);
+  }
+
+  const whereSql = `WHERE ${whereParts.join(" AND ")}`;
+
+  return db.all(
+    `SELECT * FROM workloads ${whereSql} ORDER BY department ASC, name ASC`,
+    params
+  );
+}
+
 // -----------------------------
 // BASIC ROUTES
 // -----------------------------
@@ -180,10 +218,8 @@ app.get(
   authorizeRoles("staff"),
   async (req, res) => {
     try {
-      const workload = await db.get(
-        "SELECT * FROM workloads WHERE staffId = ?",
-        [req.user.staffId]
-      );
+      const workloads = await getVisibleWorkloads(req.user);
+      const workload = workloads[0];
 
       if (!workload) {
         return res.status(404).json({ message: "Workload not found" });
@@ -203,17 +239,8 @@ app.get(
   authorizeRoles("hod", "hos", "operations"),
   async (req, res) => {
     try {
-      if (req.user.role === "hod") {
-        const data = await db.all(
-          "SELECT * FROM workloads WHERE department = ?",
-          [req.user.department]
-        );
-
-        return res.json(data);
-      }
-
-      const all = await db.all("SELECT * FROM workloads");
-      res.json(all);
+      const workloads = await getVisibleWorkloads(req.user);
+      res.json(workloads);
     } catch (err) {
       console.error(err);
       res.status(500).json({ message: "Server error" });
@@ -243,19 +270,17 @@ app.post(
         uploadedBy: req.user,
       });
 
-      // Delete temporary uploaded file after successful import.
       if (req.file?.path && fs.existsSync(req.file.path)) {
         fs.unlinkSync(req.file.path);
       }
 
-      res.json({
+      res.status(201).json({
         message: "Excel import completed",
         ...result,
       });
     } catch (err) {
       console.error(err);
 
-      // Delete temporary uploaded file even if import fails.
       if (req.file?.path && fs.existsSync(req.file.path)) {
         fs.unlinkSync(req.file.path);
       }
@@ -308,23 +333,40 @@ function generateValidationIssues(workloads) {
   const issues = [];
 
   for (const w of workloads) {
-    const expectedTotal = (w.fte || 1) * 100;
+    const expectedTotal = (Number(w.fte) || 0) * 100;
 
     const total =
-      (w.teaching || 0) +
-      (w.assignedRole || 0) +
-      (w.service || 0) +
-      (w.hdSupervision || 0) +
-      (w.research || 0);
+      (Number(w.teaching) || 0) +
+      (Number(w.assignedRole) || 0) +
+      (Number(w.service) || 0) +
+      (Number(w.hdSupervision) || 0) +
+      (Number(w.research) || 0);
 
-    if (Math.abs(total - expectedTotal) > 0.01) {
+    if (Math.abs(total - expectedTotal) > 0.05) {
       issues.push({
         staffId: w.staffId,
         staffName: w.name,
         department: w.department,
-        type: "Workload Total Mismatch",
+        type: "FTE Total Mismatch",
         severity: "warning",
-        description: `Total is ${total}, expected ${expectedTotal} based on FTE ${w.fte}.`,
+        description: `Total is ${total.toFixed(1)}, expected ${expectedTotal.toFixed(
+          1
+        )} based on FTE ${w.fte}.`,
+        sourceSheet: "Calculated Workload Summary",
+        sourceRow: null,
+      });
+    }
+
+    if (Number(w.research) < 0) {
+      issues.push({
+        staffId: w.staffId,
+        staffName: w.name,
+        department: w.department,
+        type: "Negative Research Workload",
+        severity: "error",
+        description: `Research workload is ${Number(w.research).toFixed(
+          1
+        )}, which means allocated workload exceeds expected total.`,
         sourceSheet: "Calculated Workload Summary",
         sourceRow: null,
       });
@@ -347,8 +389,37 @@ function generateValidationIssues(workloads) {
   return issues;
 }
 
-async function getLatestImportBatch() {
-  return db.get("SELECT * FROM import_batches ORDER BY id DESC LIMIT 1");
+async function getLatestStoredIssues(user) {
+  const latestImport = await getLatestImportBatch();
+
+  if (!latestImport) {
+    return null;
+  }
+
+  if (user.role === "staff") {
+    return db.all(
+      `SELECT * FROM validation_issues
+       WHERE importBatchId = ? AND staffId = ?
+       ORDER BY severity ASC, type ASC`,
+      [latestImport.id, user.staffId]
+    );
+  }
+
+  if (user.role === "hod") {
+    return db.all(
+      `SELECT * FROM validation_issues
+       WHERE importBatchId = ? AND department = ?
+       ORDER BY severity ASC, type ASC, staffName ASC`,
+      [latestImport.id, user.department]
+    );
+  }
+
+  return db.all(
+    `SELECT * FROM validation_issues
+     WHERE importBatchId = ?
+     ORDER BY severity ASC, type ASC, staffName ASC`,
+    [latestImport.id]
+  );
 }
 
 app.get(
@@ -357,24 +428,14 @@ app.get(
   authorizeRoles("staff"),
   async (req, res) => {
     try {
-      const latestImport = await getLatestImportBatch();
+      const storedIssues = await getLatestStoredIssues(req.user);
 
-      if (latestImport) {
-        const issues = await db.all(
-          `SELECT * FROM validation_issues
-           WHERE importBatchId = ? AND staffId = ?
-           ORDER BY severity ASC, type ASC`,
-          [latestImport.id, req.user.staffId]
-        );
-
-        return res.json(issues);
+      if (storedIssues) {
+        return res.json(storedIssues);
       }
 
-      const data = await db.all("SELECT * FROM workloads WHERE staffId = ?", [
-        req.user.staffId,
-      ]);
-
-      res.json(generateValidationIssues(data));
+      const workloads = await getVisibleWorkloads(req.user);
+      res.json(generateValidationIssues(workloads));
     } catch (err) {
       console.error(err);
       res.status(500).json({ message: "Server error" });
@@ -388,41 +449,14 @@ app.get(
   authorizeRoles("hod", "hos", "operations"),
   async (req, res) => {
     try {
-      const latestImport = await getLatestImportBatch();
+      const storedIssues = await getLatestStoredIssues(req.user);
 
-      if (latestImport) {
-        if (req.user.role === "hod") {
-          const issues = await db.all(
-            `SELECT * FROM validation_issues
-             WHERE importBatchId = ? AND department = ?
-             ORDER BY severity ASC, type ASC, staffName ASC`,
-            [latestImport.id, req.user.department]
-          );
-
-          return res.json(issues);
-        }
-
-        const issues = await db.all(
-          `SELECT * FROM validation_issues
-           WHERE importBatchId = ?
-           ORDER BY severity ASC, type ASC, staffName ASC`,
-          [latestImport.id]
-        );
-
-        return res.json(issues);
+      if (storedIssues) {
+        return res.json(storedIssues);
       }
 
-      let data;
-
-      if (req.user.role === "hod") {
-        data = await db.all("SELECT * FROM workloads WHERE department = ?", [
-          req.user.department,
-        ]);
-      } else {
-        data = await db.all("SELECT * FROM workloads");
-      }
-
-      res.json(generateValidationIssues(data));
+      const workloads = await getVisibleWorkloads(req.user);
+      res.json(generateValidationIssues(workloads));
     } catch (err) {
       console.error(err);
       res.status(500).json({ message: "Server error" });
@@ -507,7 +541,7 @@ app.post(
         ]
       );
 
-      res.json({ message: "Query submitted" });
+      res.status(201).json({ message: "Query submitted" });
     } catch (err) {
       console.error(err);
       res.status(500).json({ message: "Server error" });

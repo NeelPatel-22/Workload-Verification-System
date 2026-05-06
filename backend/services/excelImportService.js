@@ -230,7 +230,6 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
   const userByStaffId = new Map(userRows.map((user) => [user.staffId, user]));
 
   const issues = [];
-  const staffById = new Map();
   const staffByMember = new Map();
   const unitCodes = new Set();
   const workloadAgg = new Map();
@@ -297,6 +296,20 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
       continue;
     }
 
+    if (!existingUser) {
+      addIssue(issues, {
+        staffId,
+        staffName: staffMember,
+        type: "Unknown Staff ID",
+        severity: "error",
+        description: `${staffMember} has staff ID ${staffId}, but that staff ID is not linked to a system user.`,
+        sourceSheet: SHEETS.STAFF,
+        sourceRow,
+      });
+
+      continue;
+    }
+
     if (fte === null) {
       addIssue(issues, {
         staffId,
@@ -324,7 +337,6 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
     }
 
     parsedStaff.push(record);
-    staffById.set(staffId, record);
     staffByMember.set(staffMember, record);
   }
 
@@ -444,7 +456,7 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
       });
     } else if (!staff) {
       addIssue(issues, {
-        staffId,
+        staffId: userByStaffId.has(staffId) ? staffId : null,
         staffName: staffMember,
         department: inferredDept,
         type: "Unknown Staff Member",
@@ -472,8 +484,8 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
 
     const totalTeachingPoints = toNumber(row[9], 0);
 
-    if (staffId) {
-      const agg = ensureAgg(workloadAgg, staffId);
+    if (staff?.staffId) {
+      const agg = ensureAgg(workloadAgg, staff.staffId);
       agg.teaching += totalTeachingPoints;
       if (inferredDept) agg.unitDepartments.add(inferredDept);
     }
@@ -483,7 +495,7 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
       unitCode,
       staffType: clean(row[1]),
       staffMember,
-      staffId,
+      staffId: userByStaffId.has(staffId) ? staffId : null,
       enrolment: toNumber(row[3], null),
       duplicateCount,
       totalTeachingHours: toNumber(row[8], 0),
@@ -535,7 +547,7 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
 
     if (!staff) {
       addIssue(issues, {
-        staffId,
+        staffId: userByStaffId.has(staffId) ? staffId : null,
         staffName: staffMember,
         department: null,
         type: "Unknown Staff Member",
@@ -548,14 +560,14 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
 
     const workloadPoints = toNumber(row[6], 0);
 
-    if (staffId) {
-      ensureAgg(workloadAgg, staffId).hdr += workloadPoints;
+    if (staff?.staffId) {
+      ensureAgg(workloadAgg, staff.staffId).hdr += workloadPoints;
     }
 
     parsedHdr.push({
       sourceRow,
       staffMember,
-      staffId,
+      staffId: userByStaffId.has(staffId) ? staffId : null,
       fullTimeStudents: toNumber(row[1], 0),
       fullTimeProportion: toNumber(row[2], 0),
       partTimeStudents: toNumber(row[3], 0),
@@ -612,7 +624,7 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
 
     if (!staff) {
       addIssue(issues, {
-        staffId,
+        staffId: userByStaffId.has(staffId) ? staffId : null,
         staffName: staffMember,
         department: null,
         type: "Unknown Staff Member",
@@ -626,8 +638,8 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
     const selfDirectedServicePoints = toNumber(row[2], 0);
     const assignedRoleTotalPoints = toNumber(row[3], 0);
 
-    if (staffId) {
-      const agg = ensureAgg(workloadAgg, staffId);
+    if (staff?.staffId) {
+      const agg = ensureAgg(workloadAgg, staff.staffId);
       agg.service += selfDirectedServicePoints;
       agg.assignedRole += assignedRoleTotalPoints;
     }
@@ -635,7 +647,7 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
     parsedAssignedRoles.push({
       sourceRow,
       staffMember,
-      staffId,
+      staffId: userByStaffId.has(staffId) ? staffId : null,
       fte: toNumber(row[1], 0),
       selfDirectedServicePoints,
       assignedRoleTotalPoints,
@@ -748,21 +760,11 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
         uploadedBy?.username || uploadedBy?.name || "unknown",
         new Date().toISOString(),
         "processing",
-        null,
+        "Import started. Data is stored under this import batch.",
       ]
     );
 
     importBatchId = batchResult.lastID;
-
-    await db.run("DELETE FROM staff_sources");
-    await db.run("DELETE FROM units");
-    await db.run("DELETE FROM roles");
-    await db.run("DELETE FROM teaching_workloads");
-    await db.run("DELETE FROM hdr_workloads");
-    await db.run("DELETE FROM assigned_role_workloads");
-    await db.run("DELETE FROM validation_issues");
-    await db.run("DELETE FROM workloads");
-    await db.run("DELETE FROM import_batches WHERE id != ?", [importBatchId]);
 
     for (const staff of parsedStaff) {
       await db.run(
@@ -900,9 +902,10 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
     for (const workload of workloads) {
       await db.run(
         `INSERT INTO workloads
-        (staffId, name, department, fte, teaching, assignedRole, service, hdSupervision, research, total, targetBand, calcBand, hasDiscrepancy)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (importBatchId, staffId, name, department, fte, teaching, assignedRole, service, hdSupervision, research, total, targetBand, calcBand, hasDiscrepancy)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
+          importBatchId,
           workload.staffId,
           workload.name,
           workload.department,
@@ -946,6 +949,16 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
     await db.exec("COMMIT");
   } catch (error) {
     await db.exec("ROLLBACK");
+
+    if (importBatchId) {
+      await db.run(
+        `UPDATE import_batches
+         SET status = ?, notes = ?
+         WHERE id = ?`,
+        ["failed", error.message, importBatchId]
+      ).catch(() => {});
+    }
+
     throw error;
   }
 
@@ -965,7 +978,9 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
 }
 
 export async function getLatestImportReport(db, user) {
-  const latestImport = await db.get("SELECT * FROM import_batches ORDER BY id DESC LIMIT 1");
+  const latestImport = await db.get(
+    "SELECT * FROM import_batches WHERE status = 'completed' ORDER BY id DESC LIMIT 1"
+  );
 
   if (!latestImport) {
     return {
@@ -976,22 +991,23 @@ export async function getLatestImportReport(db, user) {
     };
   }
 
-  const params = [latestImport.id];
+  const issueParams = [latestImport.id];
   let issueWhere = "WHERE importBatchId = ?";
-  let workloadWhere = "";
-  const workloadParams = [];
+
+  const workloadParams = [latestImport.id];
+  let workloadWhere = "WHERE importBatchId = ?";
 
   if (user.role === "hod") {
     issueWhere += " AND department = ?";
-    params.push(user.department);
+    issueParams.push(user.department);
 
-    workloadWhere = "WHERE department = ?";
+    workloadWhere += " AND department = ?";
     workloadParams.push(user.department);
   }
 
   const validationIssues = await db.all(
     `SELECT * FROM validation_issues ${issueWhere} ORDER BY severity ASC, type ASC, staffName ASC`,
-    params
+    issueParams
   );
 
   const workloads = await db.all(
@@ -1004,7 +1020,7 @@ export async function getLatestImportReport(db, user) {
      FROM validation_issues ${issueWhere}
      GROUP BY type, severity
      ORDER BY count DESC`,
-    params
+    issueParams
   );
 
   return {

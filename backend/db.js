@@ -3,87 +3,94 @@ import { open } from "sqlite";
 
 // Create DB connection
 export async function initDB() {
-  return open({
+  const db = await open({
     filename: "./database.sqlite",
     driver: sqlite3.Database,
   });
+
+  await db.exec("PRAGMA foreign_keys = ON;");
+  return db;
 }
 
-// Create tables if they don’t exist
+// Create tables if they do not exist
 export async function setupDB(db) {
-  // Users table
   await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT UNIQUE,
-      password TEXT,
-      name TEXT,
-      role TEXT,
+      username TEXT NOT NULL UNIQUE,
+      password TEXT NOT NULL,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('staff', 'hod', 'hos', 'operations')),
       department TEXT,
-      staffId INTEGER
+      staffId INTEGER UNIQUE
     );
   `);
 
-  // Workloads summary table used by existing dashboards
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS workloads (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      staffId INTEGER,
-      name TEXT,
-      department TEXT,
-      fte REAL,
-      teaching REAL,
-      assignedRole REAL,
-      service REAL,
-      hdSupervision REAL,
-      research REAL,
-      total REAL,
-      targetBand TEXT,
-      calcBand TEXT,
-      hasDiscrepancy INTEGER
-    );
-  `);
-
-  // Queries table
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS queries (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      staffId INTEGER,
-      staffName TEXT,
-      department TEXT,
-      subject TEXT,
-      message TEXT,
-      status TEXT,
-      submittedAt TEXT,
-      hodComment TEXT
-    );
-  `);
-
-  // Tracks each uploaded Excel workbook import
   await db.exec(`
     CREATE TABLE IF NOT EXISTS import_batches (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      filename TEXT,
-      uploadedBy TEXT,
-      importedAt TEXT,
-      status TEXT,
-      staffCount INTEGER DEFAULT 0,
-      unitCount INTEGER DEFAULT 0,
-      roleCount INTEGER DEFAULT 0,
-      teachingRowCount INTEGER DEFAULT 0,
-      hdrRowCount INTEGER DEFAULT 0,
-      assignedRoleRowCount INTEGER DEFAULT 0,
-      workloadCount INTEGER DEFAULT 0,
-      issueCount INTEGER DEFAULT 0,
+      filename TEXT NOT NULL,
+      uploadedBy TEXT NOT NULL,
+      importedAt TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('processing', 'completed', 'failed')),
+      staffCount INTEGER NOT NULL DEFAULT 0,
+      unitCount INTEGER NOT NULL DEFAULT 0,
+      roleCount INTEGER NOT NULL DEFAULT 0,
+      teachingRowCount INTEGER NOT NULL DEFAULT 0,
+      hdrRowCount INTEGER NOT NULL DEFAULT 0,
+      assignedRoleRowCount INTEGER NOT NULL DEFAULT 0,
+      workloadCount INTEGER NOT NULL DEFAULT 0,
+      issueCount INTEGER NOT NULL DEFAULT 0,
       notes TEXT
     );
   `);
 
-  // Raw/cleaned source data from workbook sheets
+  // Workload summary table used by dashboards.
+  // importBatchId lets us keep history safely and still show only the latest import.
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS workloads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      importBatchId INTEGER,
+      staffId INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      department TEXT,
+      fte REAL NOT NULL DEFAULT 0,
+      teaching REAL NOT NULL DEFAULT 0,
+      assignedRole REAL NOT NULL DEFAULT 0,
+      service REAL NOT NULL DEFAULT 0,
+      hdSupervision REAL NOT NULL DEFAULT 0,
+      research REAL NOT NULL DEFAULT 0,
+      total REAL NOT NULL DEFAULT 0,
+      targetBand TEXT,
+      calcBand TEXT,
+      hasDiscrepancy INTEGER NOT NULL DEFAULT 0 CHECK (hasDiscrepancy IN (0, 1)),
+      FOREIGN KEY (importBatchId) REFERENCES import_batches(id) ON DELETE CASCADE,
+      FOREIGN KEY (staffId) REFERENCES users(staffId),
+      UNIQUE (importBatchId, staffId)
+    );
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS queries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      staffId INTEGER NOT NULL,
+      staffName TEXT NOT NULL,
+      department TEXT,
+      subject TEXT NOT NULL,
+      message TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('pending', 'resolved', 'rejected')),
+      submittedAt TEXT NOT NULL,
+      hodComment TEXT,
+      FOREIGN KEY (staffId) REFERENCES users(staffId)
+    );
+  `);
+
+  // Workbook source tables. These are intentionally more flexible because
+  // they store imported Excel data, including invalid rows that need to be reported.
   await db.exec(`
     CREATE TABLE IF NOT EXISTS staff_sources (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      importBatchId INTEGER,
+      importBatchId INTEGER NOT NULL,
       staffId INTEGER,
       staffMember TEXT,
       staffName TEXT,
@@ -95,41 +102,44 @@ export async function setupDB(db) {
       targetResearchPercent REAL,
       targetTRBalance REAL,
       targetBand TEXT,
-      department TEXT
+      department TEXT,
+      FOREIGN KEY (importBatchId) REFERENCES import_batches(id) ON DELETE CASCADE
     );
   `);
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS units (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      importBatchId INTEGER,
-      unitCode TEXT,
+      importBatchId INTEGER NOT NULL,
+      unitCode TEXT NOT NULL,
       unitName TEXT,
       groupedUnit TEXT,
       enrolment REAL,
       expectedUCTariff REAL,
-      cwsHoursPerStudent REAL
+      cwsHoursPerStudent REAL,
+      FOREIGN KEY (importBatchId) REFERENCES import_batches(id) ON DELETE CASCADE
     );
   `);
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS roles (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      importBatchId INTEGER,
+      importBatchId INTEGER NOT NULL,
       category TEXT,
-      roleName TEXT,
+      roleName TEXT NOT NULL,
       hours REAL,
       points REAL,
       notes TEXT,
       name TEXT,
-      rolePillars TEXT
+      rolePillars TEXT,
+      FOREIGN KEY (importBatchId) REFERENCES import_batches(id) ON DELETE CASCADE
     );
   `);
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS teaching_workloads (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      importBatchId INTEGER,
+      importBatchId INTEGER NOT NULL,
       sourceRow INTEGER,
       unitCode TEXT,
       staffType TEXT,
@@ -144,14 +154,15 @@ export async function setupDB(db) {
       unitSupervisionPoints REAL,
       newUnitDevelopmentPoints REAL,
       totalDepartmentHours REAL,
-      isUnitCoordinator TEXT
+      isUnitCoordinator TEXT,
+      FOREIGN KEY (importBatchId) REFERENCES import_batches(id) ON DELETE CASCADE
     );
   `);
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS hdr_workloads (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      importBatchId INTEGER,
+      importBatchId INTEGER NOT NULL,
       sourceRow INTEGER,
       staffMember TEXT,
       staffId INTEGER,
@@ -160,14 +171,15 @@ export async function setupDB(db) {
       partTimeStudents REAL,
       partTimeProportion REAL,
       totalSupervisionHours REAL,
-      workloadPoints REAL
+      workloadPoints REAL,
+      FOREIGN KEY (importBatchId) REFERENCES import_batches(id) ON DELETE CASCADE
     );
   `);
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS assigned_role_workloads (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      importBatchId INTEGER,
+      importBatchId INTEGER NOT NULL,
       sourceRow INTEGER,
       staffMember TEXT,
       staffId INTEGER,
@@ -185,23 +197,25 @@ export async function setupDB(db) {
       role5 TEXT,
       points5 REAL,
       role6 TEXT,
-      points6 REAL
+      points6 REAL,
+      FOREIGN KEY (importBatchId) REFERENCES import_batches(id) ON DELETE CASCADE
     );
   `);
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS validation_issues (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      importBatchId INTEGER,
+      importBatchId INTEGER NOT NULL,
       staffId INTEGER,
       staffName TEXT,
       department TEXT,
-      type TEXT,
-      severity TEXT,
-      description TEXT,
+      type TEXT NOT NULL,
+      severity TEXT NOT NULL CHECK (severity IN ('error', 'warning', 'info')),
+      description TEXT NOT NULL,
       sourceSheet TEXT,
       sourceRow INTEGER,
-      createdAt TEXT
+      createdAt TEXT NOT NULL,
+      FOREIGN KEY (importBatchId) REFERENCES import_batches(id) ON DELETE CASCADE
     );
   `);
 }
@@ -237,9 +251,9 @@ export async function seedUsers(db) {
       ('dummy17','password','Dummy, 17','staff','Physics',17),
       ('dummy18','password','Dummy, 18','staff','Physics',18),
 
-      ('hod.csse','password','HoD – CSSE','hod','CSSE',19),
-      ('hod.maths','password','HoD – Mathematics','hod','Mathematics',20),
-      ('hod.physics','password','HoD – Physics','hod','Physics',21),
+      ('hod.csse','password','HoD - CSSE','hod','CSSE',19),
+      ('hod.maths','password','HoD - Mathematics','hod','Mathematics',20),
+      ('hod.physics','password','HoD - Physics','hod','Physics',21),
 
       ('hos','password','Head of School','hos',NULL,22),
       ('ops','password','School Operations','operations',NULL,23)
@@ -247,25 +261,30 @@ export async function seedUsers(db) {
   }
 }
 
-// Seed Workloads
+// Seed initial demo workloads only when there are no workloads.
+// These have importBatchId NULL because they are not from an Excel import.
 export async function seedWorkloads(db) {
   const existing = await db.all("SELECT * FROM workloads");
 
   if (existing.length === 0) {
     console.log("Seeding workloads...");
 
-    let values = [];
+    const values = [];
 
     for (let i = 1; i <= 18; i++) {
-      const dept =
-        i <= 7 ? "CSSE" : i <= 13 ? "Mathematics" : "Physics";
+      const dept = i <= 7 || i === 9 ? "CSSE" : i <= 13 ? "Mathematics" : "Physics";
 
-      values.push(`(${i}, 'Dummy, ${String(i).padStart(2, "0")}', '${dept}', 1.0, 25, 50, 10, 5, 10, 100, 'Balanced T&R', 'Balanced T&R', 0)`);
+      values.push(
+        `(NULL, ${i}, 'Dummy, ${String(i).padStart(
+          2,
+          "0"
+        )}', '${dept}', 1.0, 25, 50, 10, 5, 10, 100, 'Balanced Teaching & Research', 'Balanced Teaching & Research', 0)`
+      );
     }
 
     await db.run(`
       INSERT INTO workloads
-      (staffId, name, department, fte, teaching, assignedRole, service, hdSupervision, research, total, targetBand, calcBand, hasDiscrepancy)
+      (importBatchId, staffId, name, department, fte, teaching, assignedRole, service, hdSupervision, research, total, targetBand, calcBand, hasDiscrepancy)
       VALUES ${values.join(",")}
     `);
   }
