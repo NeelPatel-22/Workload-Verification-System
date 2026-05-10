@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { initDB, setupDB, seedUsers, seedWorkloads, seedQueries } from "./db.js";
+import { handleServerError } from "./utils/errorResponse.js";
 
 dotenv.config();
 
@@ -59,7 +60,7 @@ async function mockAuth(req, res, next) {
     req.user = user;
     next();
   } catch (err) {
-    res.status(500).json({ message: "Auth error" });
+    handleServerError(res, err, "Auth error");
   }
 }
 
@@ -111,7 +112,7 @@ app.post("/api/auth/login", async (req, res) => {
       user: safeUser,
     });
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    handleServerError(res, err);
   }
 });
 
@@ -137,7 +138,7 @@ app.get("/api/workloads/my", mockAuth, authorizeRoles("staff"), async (req, res)
 
     res.json(workload);
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    handleServerError(res, err);
   }
 });
 
@@ -154,7 +155,7 @@ app.get("/api/workloads", mockAuth, authorizeRoles("hod", "hos", "operations"), 
     const all = await db.all("SELECT * FROM workloads");
     res.json(all);
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    handleServerError(res, err);
   }
 });
 
