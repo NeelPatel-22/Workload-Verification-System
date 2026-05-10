@@ -1,136 +1,345 @@
-import { useState, useEffect } from 'react';
-import { Card, Table, Tag, Typography, Space, Progress, Spin, Alert } from 'antd';
-import { useAuth } from '../../context/AuthContext';
+import { useEffect, useMemo, useState } from "react";
+import {
+  Alert,
+  Card,
+  Col,
+  Input,
+  Row,
+  Space,
+  Statistic,
+  Table,
+  Tag,
+  Typography,
+} from "antd";
+import { SearchOutlined } from "@ant-design/icons";
 
 const { Title, Text } = Typography;
 
-export default function DeptWorkloadPage() {
-  const { currentUser } = useAuth();
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-  const [loading, setLoading] = useState(true);
-  const [workload, setWorkload] = useState([]);
-  const [issues, setIssues] = useState([]);
-  const [error, setError] = useState('');
+function safeParse(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function getCurrentUser() {
+  const possibleKeys = [
+    "wvs_current_user",
+    "user",
+    "currentUser",
+    "authUser",
+    "loggedInUser",
+    "workloadUser",
+  ];
+
+  for (const key of possibleKeys) {
+    const value = localStorage.getItem(key);
+    if (!value) continue;
+
+    const parsed = safeParse(value);
+    if (parsed?.username) return parsed;
+    if (parsed?.user?.username) return parsed.user;
+  }
+
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    const value = localStorage.getItem(key);
+    const parsed = safeParse(value);
+
+    if (parsed?.username) return parsed;
+    if (parsed?.user?.username) return parsed.user;
+  }
+
+  return null;
+}
+
+function formatNumber(value) {
+  const number = Number(value || 0);
+  return Number.isInteger(number) ? number : number.toFixed(2);
+}
+
+function normalizeSearchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+export default function DeptWorkloadPage() {
+  const [workloads, setWorkloads] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [searchText, setSearchText] = useState("");
+
+  const currentUser = getCurrentUser();
+
+  async function loadWorkloads() {
+    try {
+      setLoading(true);
+      setError("");
+
+      if (!currentUser?.username) {
+        throw new Error("No logged-in user found.");
+      }
+
+      const response = await fetch(`${API_URL}/api/workloads`, {
+        headers: {
+          "x-user": currentUser.username,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to load department workloads.");
+      }
+
+      setWorkloads(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setError(err.message || "Failed to load department workloads.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    const fetchData = async () => {
-      if (!currentUser?.username) {
-        setLoading(false);
-        setError('No logged-in user found.');
-        return;
-      }
+    loadWorkloads();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-      setLoading(true);
-      setError('');
+  const filteredWorkloads = useMemo(() => {
+    const search = searchText.trim().toLowerCase();
+    const normalizedSearch = normalizeSearchText(searchText);
 
-      try {
-        const [workloadRes, issuesRes] = await Promise.all([
-          fetch(`${import.meta.env.VITE_API_URL}/api/workloads`, {
-            headers: {
-              'Content-Type': 'application/json',
-              'x-user': currentUser.username,
-            },
-          }),
-          fetch(`${import.meta.env.VITE_API_URL}/api/validation-issues`, {
-            headers: {
-              'Content-Type': 'application/json',
-              'x-user': currentUser.username,
-            },
-          }),
-        ]);
+    if (!search && !normalizedSearch) return workloads;
 
-        const [workloadData, issuesData] = await Promise.all([
-          workloadRes.json(),
-          issuesRes.json(),
-        ]);
+    return workloads.filter((workload) => {
+      const name = String(workload.name || "").toLowerCase();
+      const normalizedName = normalizeSearchText(workload.name);
 
-        if (!workloadRes.ok) {
-          throw new Error(workloadData.message || 'Failed to load workload.');
-        }
-        if (!issuesRes.ok) {
-          throw new Error(issuesData.message || 'Failed to load validation issues.');
-        }
+      return name.includes(search) || normalizedName.includes(normalizedSearch);
+    });
+  }, [workloads, searchText]);
 
-        setWorkload(Array.isArray(workloadData) ? workloadData : []);
-        setIssues(Array.isArray(issuesData) ? issuesData : []);
-      } catch (error) {
-        console.error('Error fetching data:', error);
-        setError(error.message || 'Unable to load department workload.');
-      } finally {
-        setLoading(false);
-      }
+  const summary = useMemo(() => {
+    const totalStaff = filteredWorkloads.length;
+
+    const totalTeaching = filteredWorkloads.reduce(
+      (sum, item) => sum + Number(item.teaching || 0),
+      0
+    );
+
+    const totalResearch = filteredWorkloads.reduce(
+      (sum, item) => sum + Number(item.research || 0),
+      0
+    );
+
+    const discrepancyCount = filteredWorkloads.filter(
+      (item) => Number(item.hasDiscrepancy) === 1
+    ).length;
+
+    return {
+      totalStaff,
+      totalTeaching,
+      totalResearch,
+      discrepancyCount,
     };
-
-    fetchData();
-  }, [currentUser]);
-
-  const deptWorkload = workload.filter((w) => w.department === currentUser.department);
-  const deptIssues = issues.filter((i) => i.department === currentUser.department);
+  }, [filteredWorkloads]);
 
   const columns = [
-    { title: 'Staff Member', dataIndex: 'name', key: 'name' },
     {
-      title: 'FTE',
-      dataIndex: 'fte',
-      key: 'fte',
-      width: 70,
-      render: (fte) => `${fte}`,
+      title: "Academic Name",
+      dataIndex: "name",
+      key: "name",
+      fixed: "left",
+      width: 230,
+      sorter: (a, b) => String(a.name || "").localeCompare(String(b.name || "")),
     },
     {
-      title: 'Teaching (%)',
-      dataIndex: 'teaching',
-      key: 'teaching',
-      render: (v) => <Progress percent={v} size="small" strokeColor="#003087" />,
+      title: "Department",
+      dataIndex: "department",
+      key: "department",
+      width: 140,
     },
-    { title: 'Research (%)', dataIndex: 'research', key: 'research', render: (v) => `${v}%` },
-    { title: 'HDR (%)', dataIndex: 'hdSupervision', key: 'hdSupervision', render: (v) => `${v}%` },
-    { title: 'Total (%)', dataIndex: 'total', key: 'total', render: (v) => `${v}%` },
     {
-      title: 'Status',
-      dataIndex: 'hasDiscrepancy',
-      key: 'hasDiscrepancy',
-      render: (hasDiscrepancy) =>
-        hasDiscrepancy ? <Tag color="warning">T:R Discrepancy</Tag> : <Tag color="success">Valid</Tag>,
+      title: "FTE",
+      dataIndex: "fte",
+      key: "fte",
+      width: 80,
+      render: formatNumber,
+      sorter: (a, b) => Number(a.fte || 0) - Number(b.fte || 0),
+    },
+    {
+      title: "Teaching",
+      dataIndex: "teaching",
+      key: "teaching",
+      width: 100,
+      render: formatNumber,
+      sorter: (a, b) => Number(a.teaching || 0) - Number(b.teaching || 0),
+    },
+    {
+      title: "Assigned Role",
+      dataIndex: "assignedRole",
+      key: "assignedRole",
+      width: 130,
+      render: formatNumber,
+      sorter: (a, b) =>
+        Number(a.assignedRole || 0) - Number(b.assignedRole || 0),
+    },
+    {
+      title: "Service",
+      dataIndex: "service",
+      key: "service",
+      width: 100,
+      render: formatNumber,
+      sorter: (a, b) => Number(a.service || 0) - Number(b.service || 0),
+    },
+    {
+      title: "HDR",
+      dataIndex: "hdSupervision",
+      key: "hdSupervision",
+      width: 100,
+      render: formatNumber,
+      sorter: (a, b) =>
+        Number(a.hdSupervision || 0) - Number(b.hdSupervision || 0),
+    },
+    {
+      title: "Research",
+      dataIndex: "research",
+      key: "research",
+      width: 100,
+      render: formatNumber,
+      sorter: (a, b) => Number(a.research || 0) - Number(b.research || 0),
+    },
+    {
+      title: "Total",
+      dataIndex: "total",
+      key: "total",
+      width: 90,
+      render: formatNumber,
+      sorter: (a, b) => Number(a.total || 0) - Number(b.total || 0),
+    },
+    {
+      title: "Target Band",
+      dataIndex: "targetBand",
+      key: "targetBand",
+      width: 220,
+      render: (value) => value || "-",
+    },
+    {
+      title: "Calculated Band",
+      dataIndex: "calcBand",
+      key: "calcBand",
+      width: 230,
+      render: (value) => value || "-",
+    },
+    {
+      title: "Discrepancy",
+      dataIndex: "hasDiscrepancy",
+      key: "hasDiscrepancy",
+      width: 120,
+      render: (value) =>
+        Number(value) === 1 ? (
+          <Tag color="red">Yes</Tag>
+        ) : (
+          <Tag color="green">No</Tag>
+        ),
+      filters: [
+        { text: "Has discrepancy", value: 1 },
+        { text: "No discrepancy", value: 0 },
+      ],
+      onFilter: (value, record) => Number(record.hasDiscrepancy) === value,
     },
   ];
 
-  if (loading) {
-    return (
-      <div style={{ textAlign: 'center', marginTop: '100px' }}>
-        <Spin size="large" tip="Loading department workload..." />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <Alert
-        message="Unable to load department workload"
-        description={error}
-        type="error"
-        showIcon
-      />
-    );
-  }
-
   return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <div>
-        <Title level={4} style={{ margin: 0 }}>{currentUser.department} – Workload Overview</Title>
+    <div>
+      <div style={{ marginBottom: 24 }}>
+        <Title level={2} style={{ marginBottom: 4 }}>
+          Department Workload
+        </Title>
         <Text type="secondary">
-          {deptWorkload.length} staff member(s) · {deptIssues.length} issue(s) detected
+          View and search academic workload records for your department.
         </Text>
       </div>
 
+      {error && (
+        <Alert
+          type="error"
+          message="Request issue"
+          description={error}
+          showIcon
+          style={{ marginBottom: 24 }}
+        />
+      )}
+
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={24} sm={12} md={6}>
+          <Card>
+            <Statistic title="Academic Staff" value={summary.totalStaff} />
+          </Card>
+        </Col>
+
+        <Col xs={24} sm={12} md={6}>
+          <Card>
+            <Statistic
+              title="Teaching Points"
+              value={Number(summary.totalTeaching.toFixed(2))}
+            />
+          </Card>
+        </Col>
+
+        <Col xs={24} sm={12} md={6}>
+          <Card>
+            <Statistic
+              title="Research Points"
+              value={Number(summary.totalResearch.toFixed(2))}
+            />
+          </Card>
+        </Col>
+
+        <Col xs={24} sm={12} md={6}>
+          <Card>
+            <Statistic
+              title="T:R Discrepancies"
+              value={summary.discrepancyCount}
+            />
+          </Card>
+        </Col>
+      </Row>
+
       <Card>
-        <Table
-          columns={columns}
-          dataSource={deptWorkload}
-          rowKey="staffId"
-          pagination={false}
+        <Space
+          direction="vertical"
           size="middle"
+          style={{ width: "100%", marginBottom: 16 }}
+        >
+          <Input
+            allowClear
+            prefix={<SearchOutlined />}
+            placeholder="Search academic by name, e.g. Dummy 14 or dummy14"
+            value={searchText}
+            onChange={(event) => setSearchText(event.target.value)}
+            style={{ maxWidth: 420 }}
+          />
+
+          <Text type="secondary">
+            Showing {filteredWorkloads.length} of {workloads.length} workload
+            records
+          </Text>
+        </Space>
+
+        <Table
+          rowKey="id"
+          columns={columns}
+          dataSource={filteredWorkloads}
+          loading={loading}
+          pagination={{ pageSize: 10 }}
+          scroll={{ x: 1600 }}
         />
       </Card>
-    </Space>
+    </div>
   );
 }
