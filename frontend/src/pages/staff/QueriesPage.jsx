@@ -1,77 +1,132 @@
-import { Card, Table, Tag, Typography, Button, Modal, Form, Input, Space, Empty, Spin, Alert } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
-import { useState, useEffect } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import { useEffect, useState } from "react";
+import {
+  Alert,
+  Button,
+  Card,
+  Empty,
+  Form,
+  Input,
+  Space,
+  Table,
+  Tag,
+  Typography,
+  message,
+} from "antd";
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
-const STATUS_COLORS = {
-  pending: 'orange',
-  approved: 'green',
-  declined: 'red',
-};
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-export default function StaffQueriesPage() {
-  const { currentUser } = useAuth();
+function safeParse(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
 
-  const [loading, setLoading] = useState(true);
-  const [queries, setQueries] = useState([]);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [error, setError] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+function getCurrentUser() {
+  const possibleKeys = [
+    "wvs_current_user",
+    "user",
+    "currentUser",
+    "authUser",
+    "loggedInUser",
+    "workloadUser",
+  ];
 
+  for (const key of possibleKeys) {
+    const value = localStorage.getItem(key);
+    if (!value) continue;
+
+    const parsed = safeParse(value);
+    if (parsed?.username) return parsed;
+    if (parsed?.user?.username) return parsed.user;
+  }
+
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    const value = localStorage.getItem(key);
+    const parsed = safeParse(value);
+
+    if (parsed?.username) return parsed;
+    if (parsed?.user?.username) return parsed.user;
+  }
+
+  return null;
+}
+
+function statusColor(status) {
+  if (status === "resolved") return "green";
+  if (status === "rejected") return "red";
+  return "orange";
+}
+
+function statusLabel(status) {
+  if (status === "resolved") return "RESOLVED";
+  if (status === "rejected") return "REJECTED";
+  return "PENDING";
+}
+
+export default function QueriesPage() {
   const [form] = Form.useForm();
 
-  useEffect(() => {
-    const fetchQueries = async () => {
+  const [queries, setQueries] = useState([]);
+  const [loadingQueries, setLoadingQueries] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const currentUser = getCurrentUser();
+
+  async function loadMyQueries() {
+    try {
+      setLoadingQueries(true);
+      setError("");
+
       if (!currentUser?.username) {
-        setLoading(false);
-        setError('No logged-in user found.');
-        return;
+        throw new Error("No logged-in user found.");
       }
 
-      setLoading(true);
-      setError('');
+      const response = await fetch(`${API_URL}/api/queries/my`, {
+        headers: {
+          "x-user": currentUser.username,
+        },
+      });
 
-      try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/queries/my`, {
-          headers: {
-            'Content-Type': 'application/json',
-            'x-user': currentUser.username,
-          },
-        });
+      const data = await response.json();
 
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.message || 'Failed to load queries.');
-        }
-
-        setQueries(Array.isArray(data) ? data : []);
-      } catch (error) {
-        console.error('Failed to load queries:', error);
-        setError(error.message || 'Unable to load queries.');
-      } finally {
-        setLoading(false);
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to load queries.");
       }
-    };
 
-    fetchQueries();
-  }, [currentUser]);
+      setQueries(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setError(err.message || "Failed to load queries.");
+    } finally {
+      setLoadingQueries(false);
+    }
+  }
+
+  useEffect(() => {
+    loadMyQueries();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleSubmit(values) {
-    if (!currentUser?.username) return;
-
-    setSubmitting(true);
-    setError('');
-
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/queries`, {
-        method: 'POST',
+      setSubmitting(true);
+      setError("");
+
+      if (!currentUser?.username) {
+        throw new Error("No logged-in user found.");
+      }
+
+      const response = await fetch(`${API_URL}/api/queries`, {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'x-user': currentUser.username,
+          "Content-Type": "application/json",
+          "x-user": currentUser.username,
         },
         body: JSON.stringify({
           subject: values.subject,
@@ -82,112 +137,128 @@ export default function StaffQueriesPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to submit query.');
+        throw new Error(data.message || "Failed to submit query.");
       }
 
-      setQueries((prev) => [...prev, data.query]);
+      message.success("Query submitted successfully.");
       form.resetFields();
-      setModalOpen(false);
-    } catch (error) {
-      console.error('Failed to submit query:', error);
-      setError(error.message || 'Unable to submit query.');
+
+      await loadMyQueries();
+    } catch (err) {
+      setError(err.message || "Failed to submit query.");
     } finally {
       setSubmitting(false);
     }
   }
 
   const columns = [
-    { title: 'Date', dataIndex: 'submittedAt', key: 'submittedAt', width: 110 },
-    { title: 'Subject', dataIndex: 'subject', key: 'subject' },
     {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
-      width: 100,
-      render: (status) => (
-        <Tag color={STATUS_COLORS[status]}>{status.toUpperCase()}</Tag>
+      title: "Subject",
+      dataIndex: "subject",
+      key: "subject",
+      render: (value) => value || "-",
+    },
+    {
+      title: "Message",
+      dataIndex: "message",
+      key: "message",
+      render: (value) => value || "-",
+    },
+    {
+      title: "Date",
+      dataIndex: "submittedAt",
+      key: "submittedAt",
+      render: (value) => value || "-",
+    },
+    {
+      title: "Status",
+      dataIndex: "status",
+      key: "status",
+      render: (value) => (
+        <Tag color={statusColor(value)}>{statusLabel(value)}</Tag>
       ),
     },
     {
-      title: 'Response',
-      dataIndex: 'hodComment',
-      key: 'hodComment',
-      render: (comment) => comment ? <Text>{comment}</Text> : <Text type="secondary">—</Text>,
+      title: "HoD Comment",
+      dataIndex: "hodComment",
+      key: "hodComment",
+      render: (value) => value || "-",
     },
   ];
 
   return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <Title level={4} style={{ margin: 0 }}>My Queries</Title>
-          <Text type="secondary">Track your submitted correction requests</Text>
-        </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
-          Submit New Query
-        </Button>
+    <div>
+      <div style={{ marginBottom: 24 }}>
+        <Title level={2} style={{ marginBottom: 4 }}>
+          My Queries
+        </Title>
+        <Text type="secondary">
+          Submit workload correction requests and track their review status.
+        </Text>
       </div>
 
       {error && (
         <Alert
-          message="Query issue"
-          description={error}
           type="error"
+          message="Request issue"
+          description={error}
           showIcon
+          style={{ marginBottom: 24 }}
         />
       )}
 
-      <Card>
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '40px' }}>
-            <Spin size="large" tip="Loading your queries..." />
-          </div>
-        ) : queries.length === 0 ? (
-          <Empty description="No queries submitted yet." />
-        ) : (
-          <Table
-            columns={columns}
-            dataSource={queries}
-            rowKey="id"
-            pagination={false}
-          />
-        )}
-      </Card>
+      <Space direction="vertical" size="large" style={{ width: "100%" }}>
+        <Card title="Submit New Query">
+          <Form form={form} layout="vertical" onFinish={handleSubmit}>
+            <Form.Item
+              label="Subject"
+              name="subject"
+              rules={[
+                {
+                  required: true,
+                  message: "Please enter a subject.",
+                },
+              ]}
+            >
+              <Input placeholder="Example: Teaching allocation issue" />
+            </Form.Item>
 
-      <Modal
-        title="Submit a Query"
-        open={modalOpen}
-        onCancel={() => setModalOpen(false)}
-        footer={null}
-        destroyOnClose
-      >
-        <Form form={form} layout="vertical" onFinish={handleSubmit}>
-          <Form.Item
-            name="subject"
-            label="Subject"
-            rules={[{ required: true, message: 'Please enter a subject.' }]}
-          >
-            <Input placeholder="e.g. Incorrect HDR supervision hours" />
-          </Form.Item>
+            <Form.Item
+              label="Message"
+              name="message"
+              rules={[
+                {
+                  required: true,
+                  message: "Please enter your query details.",
+                },
+              ]}
+            >
+              <TextArea
+                rows={4}
+                placeholder="Describe the workload issue or correction request."
+              />
+            </Form.Item>
 
-          <Form.Item
-            name="message"
-            label="Details"
-            rules={[{ required: true, message: 'Please describe the issue.' }]}
-          >
-            <TextArea rows={4} placeholder="Describe the issue with your workload allocation..." />
-          </Form.Item>
+            <Button type="primary" htmlType="submit" loading={submitting}>
+              Submit Query
+            </Button>
+          </Form>
+        </Card>
 
-          <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
-            <Space>
-              <Button onClick={() => setModalOpen(false)}>Cancel</Button>
-              <Button type="primary" htmlType="submit" loading={submitting}>
-                Submit
-              </Button>
-            </Space>
-          </Form.Item>
-        </Form>
-      </Modal>
-    </Space>
+        <Card title="My Queries">
+          {queries.length === 0 && !loadingQueries ? (
+            <Empty description="No queries submitted yet" />
+          ) : (
+            <Table
+              rowKey="id"
+              columns={columns}
+              dataSource={queries}
+              loading={loadingQueries}
+              pagination={{ pageSize: 8 }}
+            />
+          )}
+        </Card>
+      </Space>
+    </div>
   );
 }

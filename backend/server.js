@@ -124,8 +124,28 @@ function authorizeRoles(...roles) {
   };
 }
 
+function normalizeQueryStatus(value) {
+  const text = String(value || "").toLowerCase().trim();
+
+  if (["approve", "approved", "resolve", "resolved"].includes(text)) {
+    return "resolved";
+  }
+
+  if (["reject", "rejected", "decline", "declined"].includes(text)) {
+    return "rejected";
+  }
+
+  if (text === "pending") {
+    return "pending";
+  }
+
+  return null;
+}
+
 async function getLatestImportBatch() {
-  return db.get("SELECT * FROM import_batches WHERE status = 'completed' ORDER BY id DESC LIMIT 1");
+  return db.get(
+    "SELECT * FROM import_batches WHERE status = 'completed' ORDER BY id DESC LIMIT 1"
+  );
 }
 
 async function getVisibleWorkloads(user) {
@@ -525,7 +545,7 @@ app.post(
         });
       }
 
-      await db.run(
+      const result = await db.run(
         `INSERT INTO queries
         (staffId, staffName, department, subject, message, status, submittedAt, hodComment)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -541,7 +561,14 @@ app.post(
         ]
       );
 
-      res.status(201).json({ message: "Query submitted" });
+      const createdQuery = await db.get("SELECT * FROM queries WHERE id = ?", [
+        result.lastID,
+      ]);
+
+      res.status(201).json({
+        message: "Query submitted",
+        query: createdQuery,
+      });
     } catch (err) {
       console.error(err);
       res.status(500).json({ message: "Server error" });
@@ -558,9 +585,9 @@ app.patch(
       const id = parseInt(req.params.id, 10);
       const { status, hodComment } = req.body;
 
-      const allowedStatus = ["pending", "resolved", "rejected"];
+      const normalizedStatus = normalizeQueryStatus(status);
 
-      if (status && !allowedStatus.includes(status)) {
+      if (!normalizedStatus) {
         return res.status(400).json({
           message: "Invalid status value",
         });
@@ -579,12 +606,19 @@ app.patch(
       }
 
       await db.run("UPDATE queries SET status = ?, hodComment = ? WHERE id = ?", [
-        status || existing.status,
+        normalizedStatus,
         hodComment ?? existing.hodComment,
         id,
       ]);
 
-      res.json({ message: "Query updated" });
+      const updatedQuery = await db.get("SELECT * FROM queries WHERE id = ?", [
+        id,
+      ]);
+
+      res.json({
+        message: "Query updated",
+        query: updatedQuery,
+      });
     } catch (err) {
       console.error(err);
       res.status(500).json({ message: "Server error" });

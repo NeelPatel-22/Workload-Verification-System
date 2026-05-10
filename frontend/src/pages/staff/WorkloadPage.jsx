@@ -6,6 +6,12 @@ import { useAuth } from '../../context/AuthContext';
 
 const { Title, Text } = Typography;
 
+const ANNUAL_HOURS_PER_FTE = 1600;
+
+function calculateHours(percent, fte = 1) {
+  return Math.round(((Number(percent) || 0) / 100) * ANNUAL_HOURS_PER_FTE * (Number(fte) || 1));
+}
+
 export default function StaffWorkloadPage() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
@@ -97,22 +103,60 @@ export default function StaffWorkloadPage() {
     );
   }
 
+  const annualHours = Math.round(ANNUAL_HOURS_PER_FTE * (Number(workload.fte) || 1));
+
   const tableData = [
-    { key: '1', category: 'Teaching', value: workload.teaching ?? 0, unit: '%' },
-    { key: '2', category: 'HDR Supervision', value: workload.hdSupervision ?? 0, unit: '%' },
-    { key: '3', category: 'Research', value: workload.research ?? 0, unit: '%' },
-    { key: '4', category: 'Service & Citizenship', value: workload.service ?? 0, unit: '%' },
-    { key: '5', category: 'Assigned Roles', value: workload.assignedRole ?? 0, unit: '%' },
-    { key: '6', category: 'External Engagement', value: workload.externalEngagement ?? 0, unit: '%' },
+    {
+      key: '1',
+      category: 'Teaching',
+      percent: workload.teaching ?? 0,
+      hours: calculateHours(workload.teaching, workload.fte),
+    },
+    {
+      key: '2',
+      category: 'HDR Supervision',
+      percent: workload.hdSupervision ?? 0,
+      hours: calculateHours(workload.hdSupervision, workload.fte),
+    },
+    {
+      key: '3',
+      category: 'Research',
+      percent: workload.research ?? 0,
+      hours: calculateHours(workload.research, workload.fte),
+    },
+    {
+      key: '4',
+      category: 'Service & Citizenship',
+      percent: workload.service ?? 0,
+      hours: calculateHours(workload.service, workload.fte),
+    },
+    {
+      key: '5',
+      category: 'Assigned Roles',
+      percent: workload.assignedRole ?? 0,
+      hours: calculateHours(workload.assignedRole, workload.fte),
+    },
+    {
+      key: '6',
+      category: 'External Engagement',
+      percent: workload.externalEngagement ?? 0,
+      hours: calculateHours(workload.externalEngagement, workload.fte),
+    },
   ];
 
   const columns = [
     { title: 'Category', dataIndex: 'category', key: 'category' },
     {
-      title: 'Allocation',
-      dataIndex: 'value',
-      key: 'value',
-      render: (val, record) => `${val} ${record.unit}`,
+      title: 'Allocation (%)',
+      dataIndex: 'percent',
+      key: 'percent',
+      render: (val) => `${val}%`,
+    },
+    {
+      title: 'Estimated Hours',
+      dataIndex: 'hours',
+      key: 'hours',
+      render: (val) => `${val} hrs`,
     },
   ];
 
@@ -120,7 +164,9 @@ export default function StaffWorkloadPage() {
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <div>
         <Title level={4} style={{ margin: 0 }}>My Workload</Title>
-        <Text type="secondary">2026 Academic Year</Text>
+        <Text type="secondary">
+          2026 Academic Year · Estimated on {ANNUAL_HOURS_PER_FTE} hours per 1.0 FTE
+        </Text>
       </div>
 
       {issues.length > 0 && (
@@ -143,7 +189,11 @@ export default function StaffWorkloadPage() {
           <Descriptions.Item label="Name">{workload.name}</Descriptions.Item>
           <Descriptions.Item label="Department">{workload.department}</Descriptions.Item>
           <Descriptions.Item label="FTE">{workload.fte}</Descriptions.Item>
+          <Descriptions.Item label="Estimated Annual Hours">{annualHours} hrs</Descriptions.Item>
           <Descriptions.Item label="Total Workload">{workload.total}%</Descriptions.Item>
+          <Descriptions.Item label="Total Allocated Hours">
+            {calculateHours(workload.total, workload.fte)} hrs
+          </Descriptions.Item>
         </Descriptions>
       </Card>
 
@@ -159,7 +209,10 @@ export default function StaffWorkloadPage() {
                 <Text strong>Total</Text>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={1}>
-                <Text strong>{workload.total} %</Text>
+                <Text strong>{workload.total}%</Text>
+              </Table.Summary.Cell>
+              <Table.Summary.Cell index={2}>
+                <Text strong>{calculateHours(workload.total, workload.fte)} hrs</Text>
               </Table.Summary.Cell>
             </Table.Summary.Row>
           )}

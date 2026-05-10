@@ -4,6 +4,12 @@ import { useAuth } from '../../context/AuthContext';
 
 const { Title, Text } = Typography;
 
+const ANNUAL_HOURS_PER_FTE = 1600;
+
+function calculateHours(percent, fte = 1) {
+  return Math.round(((Number(percent) || 0) / 100) * ANNUAL_HOURS_PER_FTE * (Number(fte) || 1));
+}
+
 export default function SchoolWorkloadPage() {
   const { currentUser } = useAuth();
 
@@ -24,15 +30,12 @@ export default function SchoolWorkloadPage() {
       setError('');
 
       try {
-        const response = await fetch(
-          `${import.meta.env.VITE_API_URL}/api/workloads`,
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              'x-user': currentUser.username,
-            },
-          }
-        );
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/workloads`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user': currentUser.username,
+          },
+        });
 
         const data = await response.json();
 
@@ -52,51 +55,98 @@ export default function SchoolWorkloadPage() {
     fetchData();
   }, [currentUser]);
 
-  const departments = ['All', ...new Set(workload.map((w) => w.department).filter(Boolean))];
+  const enhancedWorkload = workload.map((w) => ({
+    ...w,
+    teachingHours: calculateHours(w.teaching, w.fte),
+    researchHours: calculateHours(w.research, w.fte),
+    hdrHours: calculateHours(w.hdSupervision, w.fte),
+    serviceHours: calculateHours(w.service, w.fte),
+    roleHours: calculateHours(w.assignedRole, w.fte),
+    totalHours: calculateHours(w.total, w.fte),
+  }));
+
+  const departments = ['All', ...new Set(enhancedWorkload.map((w) => w.department).filter(Boolean))];
 
   const filtered =
     deptFilter === 'All'
-      ? workload
-      : workload.filter((w) => w.department === deptFilter);
+      ? enhancedWorkload
+      : enhancedWorkload.filter((w) => w.department === deptFilter);
 
   const columns = [
-    { title: 'Staff Member', dataIndex: 'name', key: 'name' },
-    { title: 'Department', dataIndex: 'department', key: 'department' },
+    { title: 'Staff Member', dataIndex: 'name', key: 'name', fixed: 'left', width: 150 },
+    { title: 'Department', dataIndex: 'department', key: 'department', width: 130 },
     { title: 'FTE', dataIndex: 'fte', key: 'fte', width: 70 },
     {
-      title: 'Teaching (%)',
-      dataIndex: 'teaching',
+      title: 'Teaching',
       key: 'teaching',
-      render: (v) => `${v}%`,
+      render: (_, r) => (
+        <>
+          <Text>{r.teaching}%</Text>
+          <br />
+          <Text type="secondary">{r.teachingHours} hrs</Text>
+        </>
+      ),
     },
     {
-      title: 'Research (%)',
-      dataIndex: 'research',
+      title: 'Research',
       key: 'research',
-      render: (v) => `${v}%`,
+      render: (_, r) => (
+        <>
+          <Text>{r.research}%</Text>
+          <br />
+          <Text type="secondary">{r.researchHours} hrs</Text>
+        </>
+      ),
     },
     {
-      title: 'HDR (%)',
-      dataIndex: 'hdSupervision',
-      key: 'hdSupervision',
-      render: (v) => `${v}%`,
+      title: 'HDR',
+      key: 'hdr',
+      render: (_, r) => (
+        <>
+          <Text>{r.hdSupervision}%</Text>
+          <br />
+          <Text type="secondary">{r.hdrHours} hrs</Text>
+        </>
+      ),
     },
     {
-      title: 'Service (%)',
-      dataIndex: 'service',
+      title: 'Service',
       key: 'service',
-      render: (v) => `${v}%`,
+      render: (_, r) => (
+        <>
+          <Text>{r.service}%</Text>
+          <br />
+          <Text type="secondary">{r.serviceHours} hrs</Text>
+        </>
+      ),
     },
     {
-      title: 'Total (%)',
-      dataIndex: 'total',
+      title: 'Roles',
+      key: 'roles',
+      render: (_, r) => (
+        <>
+          <Text>{r.assignedRole ?? 0}%</Text>
+          <br />
+          <Text type="secondary">{r.roleHours} hrs</Text>
+        </>
+      ),
+    },
+    {
+      title: 'Total',
       key: 'total',
-      render: (v) => `${v}%`,
+      render: (_, r) => (
+        <>
+          <Text strong>{r.total}%</Text>
+          <br />
+          <Text type="secondary">{r.totalHours} hrs</Text>
+        </>
+      ),
     },
     {
       title: 'Status',
       dataIndex: 'hasDiscrepancy',
       key: 'hasDiscrepancy',
+      width: 150,
       render: (hasDiscrepancy) =>
         hasDiscrepancy ? (
           <Tag color="warning">T:R Discrepancy</Tag>
@@ -130,7 +180,9 @@ export default function SchoolWorkloadPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
         <div>
           <Title level={4} style={{ margin: 0 }}>School Workload Overview</Title>
-          <Text type="secondary">{filtered.length} staff member(s) shown</Text>
+          <Text type="secondary">
+            {filtered.length} staff member(s) shown · Estimated on {ANNUAL_HOURS_PER_FTE} hours per 1.0 FTE
+          </Text>
         </div>
 
         <Select
@@ -148,6 +200,7 @@ export default function SchoolWorkloadPage() {
           rowKey="staffId"
           pagination={false}
           size="middle"
+          scroll={{ x: 1200 }}
         />
       </Card>
     </Space>
