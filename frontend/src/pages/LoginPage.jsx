@@ -1,4 +1,4 @@
-import { Form, Input, Button, Card, Typography, Alert, Select } from 'antd';
+import { Form, Input, Button, Card, Typography, Alert } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -14,44 +14,36 @@ const ROLE_REDIRECTS = {
   operations: '/admin/dashboard',
 };
 
-// Pre-set demo accounts for development/demo use only — all share the same password "password"
-const DEMO_ACCOUNTS = [
-  { label: 'Academic Staff – Dummy 01 (CSSE)', value: 'dummy01' },
-  { label: 'Academic Staff – Dummy 14 (Physics, T:R issue)', value: 'dummy14' },
-  { label: 'Head of Department – CSSE', value: 'hod.csse' },
-  { label: 'Head of Department – Mathematics', value: 'hod.maths' },
-  { label: 'Head of Department – Physics', value: 'hod.physics' },
-  { label: 'Head of School', value: 'hos' },
-  { label: 'School Operations', value: 'ops' },
-];
-
 /**
  * LoginPage handles user authentication.
  * - Calls AuthContext.login() which posts credentials to /api/auth/login
  * - On success, redirects to the user's role-specific default page
- * - Quick fill dropdown pre-fills credentials for demo/development use
  */
 export default function LoginPage() {
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
   const [form] = Form.useForm();
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  function handleDemoSelect(username) {
-    form.setFieldsValue({ username, password: 'password' });
-    setError('');
-  }
-
   async function handleSubmit(values) {
-    setError('');
+    try {
+      setError('');
+      setLoading(true);
 
-    const result = await login(values.username, values.password);
+      const result = await login(values.username, values.password);
 
-    if (result.success) {
-      const redirect = ROLE_REDIRECTS[result.user.role] || '/';
-      navigate(redirect);
-    } else {
-      setError(result.message || 'Invalid username or password.');
+      if (result.success) {
+        const redirect = ROLE_REDIRECTS[result.user.role] || '/';
+        navigate(redirect);
+      } else {
+        setError(result.message || 'Invalid username or password.');
+      }
+    } catch (err) {
+      setError(err.message || 'Login failed. Please try again.');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -66,7 +58,14 @@ export default function LoginPage() {
         padding: '24px',
       }}
     >
-      <Card style={{ width: '100%', maxWidth: 420, borderRadius: 12 }} variant="borderless">
+      <Card
+        style={{
+          width: '100%',
+          maxWidth: 420,
+          borderRadius: 12,
+        }}
+        variant="borderless"
+      >
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div
             style={{
@@ -82,46 +81,73 @@ export default function LoginPage() {
           >
             <UserOutlined style={{ fontSize: 28, color: '#fff' }} />
           </div>
+
           <Title level={3} style={{ margin: 0 }}>
             Workload Verification System
           </Title>
+
           <Text type="secondary">UWA – PMC School Operations</Text>
         </div>
 
         {error && (
-          <Alert message={error} type="error" showIcon style={{ marginBottom: 16 }} />
+          <Alert
+            message={error}
+            type="error"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
         )}
 
-        <div style={{ marginBottom: 16 }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            Quick fill (demo only):
-          </Text>
-          <Select
-            placeholder="Select a demo account"
-            style={{ width: '100%', marginTop: 4 }}
-            onChange={handleDemoSelect}
-            options={DEMO_ACCOUNTS}
-            allowClear
-          />
-        </div>
-
-        <Form form={form} layout="vertical" onFinish={handleSubmit} requiredMark={false}>
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={handleSubmit}
+          requiredMark={false}
+        >
           <Form.Item
+            label="Username"
             name="username"
-            rules={[{ required: true, message: 'Please enter your username.' }]}
+            rules={[
+              {
+                required: true,
+                message: 'Please enter your username.',
+              },
+            ]}
           >
-            <Input prefix={<UserOutlined />} placeholder="Username" size="large" />
+            <Input
+              prefix={<UserOutlined />}
+              placeholder="Enter username"
+              size="large"
+              autoComplete="username"
+            />
           </Form.Item>
 
           <Form.Item
+            label="Password"
             name="password"
-            rules={[{ required: true, message: 'Please enter your password.' }]}
+            rules={[
+              {
+                required: true,
+                message: 'Please enter your password.',
+              },
+            ]}
           >
-            <Input.Password prefix={<LockOutlined />} placeholder="Password" size="large" />
+            <Input.Password
+              prefix={<LockOutlined />}
+              placeholder="Enter password"
+              size="large"
+              autoComplete="current-password"
+            />
           </Form.Item>
 
           <Form.Item style={{ marginBottom: 0 }}>
-            <Button type="primary" htmlType="submit" block size="large">
+            <Button
+              type="primary"
+              htmlType="submit"
+              block
+              size="large"
+              loading={loading}
+            >
               Log In
             </Button>
           </Form.Item>
