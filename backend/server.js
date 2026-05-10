@@ -194,7 +194,7 @@ app.get("/api/validation-issues/my", mockAuth, authorizeRoles("staff"), async (r
     );
     res.json(generateValidationIssues(data));
   } catch {
-    res.status(500).json({ message: "Server error" });
+    handleServerError(res, err);
   }
 });
 
@@ -213,7 +213,7 @@ app.get("/api/validation-issues", mockAuth, authorizeRoles("hod", "hos", "operat
 
     res.json(generateValidationIssues(data));
   } catch {
-    res.status(500).json({ message: "Server error" });
+    handleServerError(res, err);
   }
 });
 
@@ -237,7 +237,7 @@ app.get("/api/queries", mockAuth, authorizeRoles("hod", "hos", "operations"), as
     );
     res.json(all);
   } catch {
-    res.status(500).json({ message: "Server error" });
+    handleServerError(res, err);
   }
 });
 
@@ -250,7 +250,7 @@ app.get("/api/queries/my", mockAuth, authorizeRoles("staff"), async (req, res) =
     );
     res.json(data);
   } catch {
-    res.status(500).json({ message: "Server error" });
+    handleServerError(res, err);
   }
 });
 
@@ -283,7 +283,7 @@ app.post("/api/queries", mockAuth, authorizeRoles("staff"), async (req, res) => 
 
     res.json({ message: "Query submitted" });
   } catch {
-    res.status(500).json({ message: "Server error" });
+    handleServerError(res, err);
   }
 });
 
@@ -317,6 +317,6 @@ app.patch("/api/queries/:id", mockAuth, authorizeRoles("hod", "hos", "operations
 
     res.json({ message: "Query updated" });
   } catch {
-    res.status(500).json({ message: "Server error" });
+    handleServerError(res, err);
   }
 });
