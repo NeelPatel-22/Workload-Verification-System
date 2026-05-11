@@ -4,6 +4,22 @@ import { useAuth } from '../../context/AuthContext';
 
 const { Title, Text } = Typography;
 
+const ANNUAL_HOURS_PER_FTE = 1600;
+
+function calculateHours(percent, fte = 1) {
+  return Math.round(((Number(percent) || 0) / 100) * ANNUAL_HOURS_PER_FTE * (Number(fte) || 1));
+}
+
+function PercentWithHours({ percent, fte }) {
+  return (
+    <>
+      <Text>{percent ?? 0}%</Text>
+      <br />
+      <Text type="secondary">{calculateHours(percent, fte)} hrs</Text>
+    </>
+  );
+}
+
 export default function DeptWorkloadPage() {
   const { currentUser } = useAuth();
 
@@ -47,6 +63,7 @@ export default function DeptWorkloadPage() {
         if (!workloadRes.ok) {
           throw new Error(workloadData.message || 'Failed to load workload.');
         }
+
         if (!issuesRes.ok) {
           throw new Error(issuesData.message || 'Failed to load validation issues.');
         }
@@ -68,7 +85,7 @@ export default function DeptWorkloadPage() {
   const deptIssues = issues.filter((i) => i.department === currentUser.department);
 
   const columns = [
-    { title: 'Staff Member', dataIndex: 'name', key: 'name' },
+    { title: 'Staff Member', dataIndex: 'name', key: 'name', width: 150 },
     {
       title: 'FTE',
       dataIndex: 'fte',
@@ -77,18 +94,56 @@ export default function DeptWorkloadPage() {
       render: (fte) => `${fte}`,
     },
     {
-      title: 'Teaching (%)',
-      dataIndex: 'teaching',
+      title: 'Teaching',
       key: 'teaching',
-      render: (v) => <Progress percent={v} size="small" strokeColor="#003087" />,
+      render: (_, r) => (
+        <>
+          <Progress
+            percent={Number(r.teaching) || 0}
+            size="small"
+            strokeColor="#003087"
+            style={{ marginBottom: 4 }}
+          />
+          <Text type="secondary">{calculateHours(r.teaching, r.fte)} hrs</Text>
+        </>
+      ),
     },
-    { title: 'Research (%)', dataIndex: 'research', key: 'research', render: (v) => `${v}%` },
-    { title: 'HDR (%)', dataIndex: 'hdSupervision', key: 'hdSupervision', render: (v) => `${v}%` },
-    { title: 'Total (%)', dataIndex: 'total', key: 'total', render: (v) => `${v}%` },
+    {
+      title: 'Research',
+      key: 'research',
+      render: (_, r) => <PercentWithHours percent={r.research} fte={r.fte} />,
+    },
+    {
+      title: 'HDR',
+      key: 'hdr',
+      render: (_, r) => <PercentWithHours percent={r.hdSupervision} fte={r.fte} />,
+    },
+    {
+      title: 'Service',
+      key: 'service',
+      render: (_, r) => <PercentWithHours percent={r.service} fte={r.fte} />,
+    },
+    {
+      title: 'Roles',
+      key: 'roles',
+      render: (_, r) => <PercentWithHours percent={r.assignedRole} fte={r.fte} />,
+    },
+    {
+      title: 'Total',
+      key: 'total',
+      render: (_, r) => (
+        <>
+          <Text strong>{r.total}%</Text>
+          <br />
+          <Text type="secondary">{calculateHours(r.total, r.fte)} hrs</Text>
+        </>
+      ),
+    },
     {
       title: 'Status',
       dataIndex: 'hasDiscrepancy',
       key: 'hasDiscrepancy',
+      width: 150,
       render: (hasDiscrepancy) =>
         hasDiscrepancy ? <Tag color="warning">T:R Discrepancy</Tag> : <Tag color="success">Valid</Tag>,
     },
@@ -118,7 +173,7 @@ export default function DeptWorkloadPage() {
       <div>
         <Title level={4} style={{ margin: 0 }}>{currentUser.department} – Workload Overview</Title>
         <Text type="secondary">
-          {deptWorkload.length} staff member(s) · {deptIssues.length} issue(s) detected
+          {deptWorkload.length} staff member(s) · {deptIssues.length} issue(s) detected · Estimated on {ANNUAL_HOURS_PER_FTE} hours per 1.0 FTE
         </Text>
       </div>
 
@@ -129,6 +184,7 @@ export default function DeptWorkloadPage() {
           rowKey="staffId"
           pagination={false}
           size="middle"
+          scroll={{ x: 1200 }}
         />
       </Card>
     </Space>

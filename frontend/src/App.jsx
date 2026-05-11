@@ -13,7 +13,6 @@ import SchoolWorkloadPage from './pages/admin/SchoolWorkloadPage';
 import AllQueriesPage from './pages/admin/AllQueriesPage';
 import ReportsPage from './pages/admin/ReportsPage';
 import ImportData from './pages/admin/ImportData';
-
 /**
  * Redirects users from the root path "/" to their role-specific default page.
  * If no user is logged in, redirects to /login.
@@ -146,6 +145,15 @@ export default function App() {
               }
             />
           </Route>
+
+          <Route
+            path="/import-data"
+            element={
+              <ProtectedRoute allowedRoles={['hos', 'operations']}>
+                <ImportData />
+              </ProtectedRoute>
+            }
+          />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
