@@ -47,6 +47,73 @@ function isJunkStaffValue(value) {
   return false;
 }
 
+function isNonSystemAcademicCategory(staffMember, staffName, staffNumber) {
+  const member = clean(staffMember).toLowerCase();
+  const name = clean(staffName).toLowerCase();
+  const number = clean(staffNumber).toLowerCase();
+
+  if (member.startsWith("academic na")) return true;
+  if (name === "academic na") return true;
+
+  const categoryTerms = [
+    "paid casual staff",
+    "professional staff performing academic duties",
+    "paid external",
+    "unpaid external",
+    "emeritus",
+    "off-load",
+    "offload",
+    "contributors",
+    "contributers",
+  ];
+
+  return categoryTerms.some(
+    (term) => member.includes(term) || number.includes(term)
+  );
+}
+
+function looksLikeNormalUnitCode(unitCode) {
+  const code = clean(unitCode).toUpperCase();
+
+  // Typical UWA style unit code, for example CITS3403, MATH1011, PHYS1001, SCIE1501.
+  return /^[A-Z]{4}\d{4}[A-Z]?$/.test(code);
+}
+
+function isSpecialOrHelperUnitRow(unitCode, groupedUnit) {
+  const code = clean(unitCode);
+  const lower = code.toLowerCase();
+  const grouped = clean(groupedUnit).toLowerCase();
+
+  if (!code) return true;
+
+  // Rows like "CITS3301; CITS4401" are grouped references, not normal single units.
+  if (code.includes(";")) return true;
+
+  // Workbook explicitly marks grouped unit rows.
+  if (["y", "yes", "true"].includes(grouped)) return true;
+
+  const specialTerms = [
+    "non-pmc",
+    "non pmc",
+    "external",
+    "outside",
+    "other",
+    "placeholder",
+    "combined",
+    "grouped",
+    "not applicable",
+    "n/a",
+    "na",
+  ];
+
+  if (specialTerms.some((term) => lower.includes(term))) return true;
+
+  // If it does not look like a normal unit code, treat it as a category/helper row.
+  if (!looksLikeNormalUnitCode(code)) return true;
+
+  return false;
+}
+
 function rowHasMeaningfulValues(row, startIndex = 0) {
   return row.slice(startIndex).some((value) => {
     const text = clean(value);
@@ -102,12 +169,13 @@ function normalizeBand(value) {
 
 function calculateBand(teachingPoints, researchPoints) {
   const denominator = teachingPoints + researchPoints;
+
   if (denominator <= 0) return "Unknown";
 
   const teachingRatio = teachingPoints / denominator;
 
-  if (teachingRatio < 0.3) return "Research Focused";
-  if (teachingRatio > 0.7) return "Teaching Focused";
+  if (teachingRatio < 0.2) return "Research Focused";
+  if (teachingRatio > 0.8) return "Teaching Focused";
 
   return "Balanced Teaching & Research";
 }
@@ -232,6 +300,7 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
   const issues = [];
   const staffByMember = new Map();
   const unitCodes = new Set();
+  const referencedTeachingUnitCodes = new Set();
   const workloadAgg = new Map();
 
   const staffRows = sheetRows(workbook, SHEETS.STAFF);
@@ -240,6 +309,14 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
   const teachingRows = sheetRows(workbook, SHEETS.TEACHING);
   const hdrRows = sheetRows(workbook, SHEETS.HDR);
   const assignedRoleRows = sheetRows(workbook, SHEETS.ASSIGNED_ROLE);
+
+  for (let i = 2; i < teachingRows.length; i++) {
+    const unitCode = clean(teachingRows[i][0]);
+
+    if (unitCode) {
+      referencedTeachingUnitCodes.add(unitCode);
+    }
+  }
 
   const parsedStaff = [];
 
@@ -252,6 +329,10 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
     const staffNumber = clean(row[4]);
 
     if (isJunkStaffValue(staffMember)) continue;
+
+    if (isNonSystemAcademicCategory(staffMember, staffName, staffNumber)) {
+      continue;
+    }
 
     const staffId = parseStaffId(staffMember, staffNumber);
     const fte = toNumber(row[5], null);
@@ -360,11 +441,14 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
 
     scanRowForFormulaErrors(row, issues, SHEETS.UNITS, sourceRow, null, null, null);
 
-    if (!record.unitName) {
+    const isUsedInTeaching = referencedTeachingUnitCodes.has(unitCode);
+    const isSpecialRow = isSpecialOrHelperUnitRow(unitCode, record.groupedUnit);
+
+    if (!record.unitName && isUsedInTeaching && !isSpecialRow) {
       addIssue(issues, {
         type: "Missing Unit Name",
         severity: "warning",
-        description: `Unit ${unitCode} has no unit name.`,
+        description: `Unit ${unitCode} is used in teaching data but has no unit name.`,
         sourceSheet: SHEETS.UNITS,
         sourceRow,
       });
@@ -593,12 +677,12 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
 
       if (assignedRoleTotalPoints > 0 || roleNames.length > 0) {
         addIssue(issues, {
-          staffName: "Missing staff member",
-          type: "Missing Staff Member",
-          severity: "error",
-          description: `Assigned Role row ${sourceRow} has ${round(
+          staffName: "Unassigned role",
+          type: "Unassigned Assigned Role",
+          severity: "warning",
+          description: `Assigned Role row ${sourceRow} contains ${round(
             assignedRoleTotalPoints
-          )} role points but no valid staff member. Roles: ${
+          )} workload points but has no valid staff member. Role(s): ${
             roleNames.length > 0 ? roleNames.join(", ") : "No role name provided"
           }.`,
           sourceSheet: SHEETS.ASSIGNED_ROLE,
