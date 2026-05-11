@@ -193,7 +193,7 @@ app.get("/api/validation-issues/my", mockAuth, authorizeRoles("staff"), async (r
       [req.user.staffId]
     );
     res.json(generateValidationIssues(data));
-  } catch {
+  } catch (err){
     handleServerError(res, err);
   }
 });
@@ -212,7 +212,7 @@ app.get("/api/validation-issues", mockAuth, authorizeRoles("hod", "hos", "operat
     }
 
     res.json(generateValidationIssues(data));
-  } catch {
+  } catch (err) {
     handleServerError(res, err);
   }
 });
@@ -236,7 +236,7 @@ app.get("/api/queries", mockAuth, authorizeRoles("hod", "hos", "operations"), as
       "SELECT * FROM queries ORDER BY submittedAt DESC"
     );
     res.json(all);
-  } catch {
+  } catch (err) {
     handleServerError(res, err);
   }
 });
@@ -249,7 +249,7 @@ app.get("/api/queries/my", mockAuth, authorizeRoles("staff"), async (req, res) =
       [req.user.staffId]
     );
     res.json(data);
-  } catch {
+  } catch (err) {
     handleServerError(res, err);
   }
 });
@@ -282,7 +282,7 @@ app.post("/api/queries", mockAuth, authorizeRoles("staff"), async (req, res) => 
     );
 
     res.json({ message: "Query submitted" });
-  } catch {
+  } catch (err) {
     handleServerError(res, err);
   }
 });
@@ -316,7 +316,7 @@ app.patch("/api/queries/:id", mockAuth, authorizeRoles("hod", "hos", "operations
     );
 
     res.json({ message: "Query updated" });
-  } catch {
+  } catch (err) {
     handleServerError(res, err);
   }
 });
