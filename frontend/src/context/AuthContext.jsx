@@ -6,7 +6,7 @@ import { createContext, useContext, useState } from 'react';
  * survives a page refresh. The backend currently identifies users via an x-user header
  * (no JWT tokens yet).
  */
-const AuthContext = createContext(null);
+export const AuthContext = createContext(null);
 
 const STORAGE_KEY = 'wvs_current_user';
 
