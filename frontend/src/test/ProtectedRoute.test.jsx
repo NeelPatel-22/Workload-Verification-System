@@ -1,8 +1,13 @@
+// Tests for ProtectedRoute.
+// Checks three things: unauthenticated users go to /login,
+// users with the wrong role get sent to their own default page,
+// and users with a matching role can see the protected content.
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import ProtectedRoute from '../ProtectedRoute';
 
+// Renders ProtectedRoute inside a router with stub pages for each redirect target.
 function renderWithAuth(user, allowedRoles) {
   return render(
     <MemoryRouter initialEntries={['/protected']}>

@@ -1,3 +1,6 @@
+// Tests for AuthContext.
+// Covers: starting with no user, restoring a session from localStorage on page load,
+// successful login, failed login (wrong credentials or network down), and logout.
 import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AuthProvider, useAuth } from '../context/AuthContext';
@@ -23,6 +26,7 @@ function setup() {
   );
 }
 
+// Start each test with a clean slate — no leftover user data or fetch mocks.
 beforeEach(() => {
   localStorage.clear();
   vi.restoreAllMocks();
