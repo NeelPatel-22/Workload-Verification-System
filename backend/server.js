@@ -9,6 +9,7 @@ import {
   importExcelWorkbook,
   getLatestImportReport,
 } from "./services/excelImportService.js";
+import { handleServerError } from "./utils/errorResponse.js";
 
 dotenv.config();
 
@@ -110,7 +111,7 @@ async function mockAuth(req, res, next) {
     next();
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Auth error" });
+    handleServerError(res, err, "Auth error");
   }
 }
 
@@ -218,8 +219,7 @@ app.post("/api/auth/login", async (req, res) => {
       user: safeUser,
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    handleServerError(res, err);
   }
 });
 
@@ -247,8 +247,7 @@ app.get(
 
       res.json(workload);
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: "Server error" });
+      handleServerError(res, err);
     }
   }
 );
@@ -262,8 +261,7 @@ app.get(
       const workloads = await getVisibleWorkloads(req.user);
       res.json(workloads);
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: "Server error" });
+      handleServerError(res, err);
     }
   }
 );
@@ -299,7 +297,7 @@ app.post(
         ...result,
       });
     } catch (err) {
-      console.error(err);
+      handleServerError(res, err, "Excel import failed");
 
       if (req.file?.path && fs.existsSync(req.file.path)) {
         fs.unlinkSync(req.file.path);
@@ -457,8 +455,7 @@ app.get(
       const workloads = await getVisibleWorkloads(req.user);
       res.json(generateValidationIssues(workloads));
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: "Server error" });
+      handleServerError(res, err);
     }
   }
 );
@@ -478,8 +475,7 @@ app.get(
       const workloads = await getVisibleWorkloads(req.user);
       res.json(generateValidationIssues(workloads));
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: "Server error" });
+      handleServerError(res, err);
     }
   }
 );
@@ -506,8 +502,7 @@ app.get(
       const all = await db.all("SELECT * FROM queries ORDER BY submittedAt DESC");
       res.json(all);
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: "Server error" });
+      handleServerError(res, err);
     }
   }
 );
@@ -525,8 +520,7 @@ app.get(
 
       res.json(data);
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: "Server error" });
+      handleServerError(res, err);
     }
   }
 );
@@ -570,8 +564,7 @@ app.post(
         query: createdQuery,
       });
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: "Server error" });
+      handleServerError(res, err);
     }
   }
 );
@@ -620,8 +613,7 @@ app.patch(
         query: updatedQuery,
       });
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: "Server error" });
+      handleServerError(res, err);
     }
   }
 );
