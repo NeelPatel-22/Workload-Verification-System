@@ -4,7 +4,15 @@ import dotenv from "dotenv";
 import multer from "multer";
 import fs from "fs";
 import path from "path";
-import { initDB, setupDB, seedUsers, seedWorkloads, seedQueries } from "./db.js";
+import bcrypt from "bcryptjs";
+import {
+  initDB,
+  setupDB,
+  seedUsers,
+  seedWorkloads,
+  seedQueries,
+  upgradePlainTextPasswords,
+} from "./db.js";
 import {
   importExcelWorkbook,
   getLatestImportReport,
@@ -77,6 +85,7 @@ async function startServer() {
   db = await initDB();
   await setupDB(db);
   await seedUsers(db);
+  await upgradePlainTextPasswords(db);
   await seedWorkloads(db);
   await seedQueries(db);
 
@@ -110,8 +119,7 @@ async function mockAuth(req, res, next) {
     req.user = user;
     next();
   } catch (err) {
-    console.error(err);
-    handleServerError(res, err, "Auth error");
+    return handleServerError(res, err, "Auth error");
   }
 }
 
@@ -200,12 +208,27 @@ app.post("/api/auth/login", async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    const user = await db.get(
-      "SELECT * FROM users WHERE username = ? AND password = ?",
-      [username, password]
-    );
+    if (!username || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Username and password are required",
+      });
+    }
+
+    const user = await db.get("SELECT * FROM users WHERE username = ?", [
+      username,
+    ]);
 
     if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid username or password",
+      });
+    }
+
+    const passwordMatches = await bcrypt.compare(password, user.password);
+
+    if (!passwordMatches) {
       return res.status(401).json({
         success: false,
         message: "Invalid username or password",
@@ -219,7 +242,7 @@ app.post("/api/auth/login", async (req, res) => {
       user: safeUser,
     });
   } catch (err) {
-    handleServerError(res, err);
+    return handleServerError(res, err);
   }
 });
 
@@ -247,7 +270,7 @@ app.get(
 
       res.json(workload);
     } catch (err) {
-      handleServerError(res, err);
+      return handleServerError(res, err);
     }
   }
 );
@@ -261,7 +284,7 @@ app.get(
       const workloads = await getVisibleWorkloads(req.user);
       res.json(workloads);
     } catch (err) {
-      handleServerError(res, err);
+      return handleServerError(res, err);
     }
   }
 );
@@ -297,15 +320,15 @@ app.post(
         ...result,
       });
     } catch (err) {
-      handleServerError(res, err, "Excel import failed");
-
       if (req.file?.path && fs.existsSync(req.file.path)) {
         fs.unlinkSync(req.file.path);
       }
 
-      res.status(500).json({
-        message: err.message || "Excel import failed",
-      });
+      return handleServerError(
+        res,
+        err,
+        err.message || "Excel import failed"
+      );
     }
   }
 );
@@ -319,8 +342,7 @@ app.get(
       const report = await getLatestImportReport(db, req.user);
       res.json(report);
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: "Failed to load import report" });
+      return handleServerError(res, err, "Failed to load import report");
     }
   }
 );
@@ -337,8 +359,7 @@ app.get(
 
       res.json(batches);
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: "Failed to load import batches" });
+      return handleServerError(res, err, "Failed to load import batches");
     }
   }
 );
@@ -455,7 +476,7 @@ app.get(
       const workloads = await getVisibleWorkloads(req.user);
       res.json(generateValidationIssues(workloads));
     } catch (err) {
-      handleServerError(res, err);
+      return handleServerError(res, err);
     }
   }
 );
@@ -475,7 +496,7 @@ app.get(
       const workloads = await getVisibleWorkloads(req.user);
       res.json(generateValidationIssues(workloads));
     } catch (err) {
-      handleServerError(res, err);
+      return handleServerError(res, err);
     }
   }
 );
@@ -502,7 +523,7 @@ app.get(
       const all = await db.all("SELECT * FROM queries ORDER BY submittedAt DESC");
       res.json(all);
     } catch (err) {
-      handleServerError(res, err);
+      return handleServerError(res, err);
     }
   }
 );
@@ -520,7 +541,7 @@ app.get(
 
       res.json(data);
     } catch (err) {
-      handleServerError(res, err);
+      return handleServerError(res, err);
     }
   }
 );
@@ -564,7 +585,7 @@ app.post(
         query: createdQuery,
       });
     } catch (err) {
-      handleServerError(res, err);
+      return handleServerError(res, err);
     }
   }
 );
@@ -613,7 +634,7 @@ app.patch(
         query: updatedQuery,
       });
     } catch (err) {
-      handleServerError(res, err);
+      return handleServerError(res, err);
     }
   }
 );
