@@ -85,9 +85,10 @@ async function startServer() {
   db = await initDB();
   await setupDB(db);
   await seedUsers(db);
+
   await upgradePlainTextPasswords(db);
-  await seedWorkloads(db);
-  await seedQueries(db);
+  //await seedWorkloads(db);
+ // await seedQueries(db);
 
   app.listen(PORT, () => {
     console.log(`Server running at http://localhost:${PORT}`);
@@ -151,39 +152,108 @@ function normalizeQueryStatus(value) {
   return null;
 }
 
-async function getLatestImportBatch() {
+function parseWorkloadYear(value) {
+  const currentYear = new Date().getFullYear();
+  const parsed = Number.parseInt(value, 10);
+
+  if (!Number.isFinite(parsed)) {
+    return currentYear;
+  }
+
+  if (parsed < 2000 || parsed > currentYear + 1) {
+    return currentYear;
+  }
+
+  return parsed;
+}
+
+function parseOptionalWorkloadYear(value) {
+  const currentYear = new Date().getFullYear();
+
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  if (parsed < 2000 || parsed > currentYear + 1) {
+    return null;
+  }
+
+  return parsed;
+}
+
+// -----------------------------
+// IMPORT / WORKLOAD HELPERS
+// -----------------------------
+
+async function getImportBatch(workloadYear = null) {
+  if (workloadYear) {
+    return db.get(
+      `SELECT *
+       FROM import_batches
+       WHERE status = 'completed'
+         AND workloadYear = ?
+       ORDER BY importedAt DESC, id DESC
+       LIMIT 1`,
+      [workloadYear]
+    );
+  }
+
   return db.get(
-    "SELECT * FROM import_batches WHERE status = 'completed' ORDER BY id DESC LIMIT 1"
+    `SELECT *
+     FROM import_batches
+     WHERE status = 'completed'
+     ORDER BY workloadYear DESC, importedAt DESC, id DESC
+     LIMIT 1`
   );
 }
 
-async function getVisibleWorkloads(user) {
-  const latestImport = await getLatestImportBatch();
+async function getLatestImportBatch() {
+  return getImportBatch();
+}
+
+async function getVisibleWorkloads(user, workloadYear = null) {
+  const selectedImport = await getImportBatch(workloadYear);
 
   const whereParts = [];
   const params = [];
 
-  if (latestImport) {
-    whereParts.push("importBatchId = ?");
-    params.push(latestImport.id);
+  if (selectedImport) {
+    whereParts.push("w.importBatchId = ?");
+    params.push(selectedImport.id);
+  } else if (workloadYear) {
+    return [];
   } else {
-    whereParts.push("importBatchId IS NULL");
+    whereParts.push("w.importBatchId IS NULL");
   }
 
   if (user.role === "staff") {
-    whereParts.push("staffId = ?");
+    whereParts.push("w.staffId = ?");
     params.push(user.staffId);
   }
 
   if (user.role === "hod") {
-    whereParts.push("department = ?");
+    whereParts.push("w.department = ?");
     params.push(user.department);
   }
 
   const whereSql = `WHERE ${whereParts.join(" AND ")}`;
 
   return db.all(
-    `SELECT * FROM workloads ${whereSql} ORDER BY department ASC, name ASC`,
+    `SELECT
+       w.*,
+       b.workloadYear,
+       b.filename,
+       b.importedAt
+     FROM workloads w
+     LEFT JOIN import_batches b ON b.id = w.importBatchId
+     ${whereSql}
+     ORDER BY w.department ASC, w.name ASC`,
     params
   );
 }
@@ -261,7 +331,8 @@ app.get(
   authorizeRoles("staff"),
   async (req, res) => {
     try {
-      const workloads = await getVisibleWorkloads(req.user);
+      const workloadYear = parseOptionalWorkloadYear(req.query.workloadYear);
+      const workloads = await getVisibleWorkloads(req.user, workloadYear);
       const workload = workloads[0];
 
       if (!workload) {
@@ -276,12 +347,95 @@ app.get(
 );
 
 app.get(
+  "/api/workloads/my/history",
+  mockAuth,
+  authorizeRoles("staff"),
+  async (req, res) => {
+    try {
+      const requestedYears = Number.parseInt(req.query.years, 10);
+      const numberOfYears =
+        Number.isFinite(requestedYears) && requestedYears > 0
+          ? requestedYears
+          : 2;
+
+      const currentWorkloadYearRow = await db.get(
+        `SELECT b.workloadYear
+         FROM import_batches b
+         JOIN workloads w ON w.importBatchId = b.id
+         WHERE b.status = 'completed'
+           AND w.staffId = ?
+           AND b.workloadYear IS NOT NULL
+         ORDER BY b.workloadYear DESC, b.importedAt DESC, b.id DESC
+         LIMIT 1`,
+        [req.user.staffId]
+      );
+
+      if (!currentWorkloadYearRow) {
+        return res.json([]);
+      }
+
+      const currentWorkloadYear = currentWorkloadYearRow.workloadYear;
+
+      const pastYears = await db.all(
+        `SELECT DISTINCT b.workloadYear
+         FROM import_batches b
+         JOIN workloads w ON w.importBatchId = b.id
+         WHERE b.status = 'completed'
+           AND w.staffId = ?
+           AND b.workloadYear IS NOT NULL
+           AND b.workloadYear < ?
+         ORDER BY b.workloadYear DESC
+         LIMIT ?`,
+        [req.user.staffId, currentWorkloadYear, numberOfYears]
+      );
+
+      const years = pastYears.map((row) => row.workloadYear);
+
+      if (years.length === 0) {
+        return res.json([]);
+      }
+
+      const placeholders = years.map(() => "?").join(",");
+
+      const history = await db.all(
+        `SELECT
+           w.*,
+           b.workloadYear,
+           b.filename,
+           b.importedAt
+         FROM workloads w
+         JOIN import_batches b ON b.id = w.importBatchId
+         WHERE w.staffId = ?
+           AND b.status = 'completed'
+           AND b.workloadYear IN (${placeholders})
+           AND b.id IN (
+             SELECT MAX(id)
+             FROM import_batches
+             WHERE status = 'completed'
+               AND workloadYear IN (${placeholders})
+             GROUP BY workloadYear
+           )
+         ORDER BY b.workloadYear DESC, b.importedAt DESC, b.id DESC`,
+        [req.user.staffId, ...years, ...years]
+      );
+
+      res.json(history);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Server error" });
+    }
+  }
+);
+
+app.get(
   "/api/workloads",
   mockAuth,
   authorizeRoles("hod", "hos", "operations"),
   async (req, res) => {
     try {
-      const workloads = await getVisibleWorkloads(req.user);
+      const workloadYear = parseOptionalWorkloadYear(req.query.workloadYear);
+      const workloads = await getVisibleWorkloads(req.user, workloadYear);
+
       res.json(workloads);
     } catch (err) {
       return handleServerError(res, err);
@@ -304,11 +458,14 @@ app.post(
         return res.status(400).json({ message: "No file uploaded" });
       }
 
+      const workloadYear = parseWorkloadYear(req.body.workloadYear);
+
       const result = await importExcelWorkbook({
         db,
         filePath: req.file.path,
         originalName: req.file.originalname,
         uploadedBy: req.user,
+        workloadYear,
       });
 
       if (req.file?.path && fs.existsSync(req.file.path)) {
@@ -339,7 +496,10 @@ app.get(
   authorizeRoles("hod", "hos", "operations"),
   async (req, res) => {
     try {
-      const report = await getLatestImportReport(db, req.user);
+      const workloadYear = parseOptionalWorkloadYear(req.query.workloadYear);
+
+      const report = await getLatestImportReport(db, req.user, workloadYear);
+
       res.json(report);
     } catch (err) {
       return handleServerError(res, err, "Failed to load import report");
@@ -353,8 +513,24 @@ app.get(
   authorizeRoles("hos", "operations"),
   async (req, res) => {
     try {
+      const workloadYear = parseOptionalWorkloadYear(req.query.workloadYear);
+
+      if (workloadYear) {
+        const batches = await db.all(
+          `SELECT *
+           FROM import_batches
+           WHERE workloadYear = ?
+           ORDER BY importedAt DESC, id DESC`,
+          [workloadYear]
+        );
+
+        return res.json(batches);
+      }
+
       const batches = await db.all(
-        "SELECT * FROM import_batches ORDER BY importedAt DESC"
+        `SELECT *
+         FROM import_batches
+         ORDER BY workloadYear DESC, importedAt DESC, id DESC`
       );
 
       res.json(batches);
@@ -428,36 +604,41 @@ function generateValidationIssues(workloads) {
   return issues;
 }
 
-async function getLatestStoredIssues(user) {
-  const latestImport = await getLatestImportBatch();
+async function getLatestStoredIssues(user, workloadYear = null) {
+  const selectedImport = await getImportBatch(workloadYear);
 
-  if (!latestImport) {
+  if (!selectedImport) {
     return null;
   }
 
   if (user.role === "staff") {
     return db.all(
-      `SELECT * FROM validation_issues
-       WHERE importBatchId = ? AND staffId = ?
+      `SELECT *
+       FROM validation_issues
+       WHERE importBatchId = ?
+         AND staffId = ?
        ORDER BY severity ASC, type ASC`,
-      [latestImport.id, user.staffId]
+      [selectedImport.id, user.staffId]
     );
   }
 
   if (user.role === "hod") {
     return db.all(
-      `SELECT * FROM validation_issues
-       WHERE importBatchId = ? AND department = ?
+      `SELECT *
+       FROM validation_issues
+       WHERE importBatchId = ?
+         AND department = ?
        ORDER BY severity ASC, type ASC, staffName ASC`,
-      [latestImport.id, user.department]
+      [selectedImport.id, user.department]
     );
   }
 
   return db.all(
-    `SELECT * FROM validation_issues
+    `SELECT *
+     FROM validation_issues
      WHERE importBatchId = ?
      ORDER BY severity ASC, type ASC, staffName ASC`,
-    [latestImport.id]
+    [selectedImport.id]
   );
 }
 
@@ -467,13 +648,33 @@ app.get(
   authorizeRoles("staff"),
   async (req, res) => {
     try {
-      const storedIssues = await getLatestStoredIssues(req.user);
+      const requestedImportBatchId = Number.parseInt(
+        req.query.importBatchId,
+        10
+      );
+
+      if (Number.isFinite(requestedImportBatchId)) {
+        const issues = await db.all(
+          `SELECT *
+           FROM validation_issues
+           WHERE importBatchId = ?
+             AND staffId = ?
+           ORDER BY severity ASC, type ASC`,
+          [requestedImportBatchId, req.user.staffId]
+        );
+
+        return res.json(issues);
+      }
+
+      const workloadYear = parseOptionalWorkloadYear(req.query.workloadYear);
+
+      const storedIssues = await getLatestStoredIssues(req.user, workloadYear);
 
       if (storedIssues) {
         return res.json(storedIssues);
       }
 
-      const workloads = await getVisibleWorkloads(req.user);
+      const workloads = await getVisibleWorkloads(req.user, workloadYear);
       res.json(generateValidationIssues(workloads));
     } catch (err) {
       return handleServerError(res, err);
@@ -487,13 +688,15 @@ app.get(
   authorizeRoles("hod", "hos", "operations"),
   async (req, res) => {
     try {
-      const storedIssues = await getLatestStoredIssues(req.user);
+      const workloadYear = parseOptionalWorkloadYear(req.query.workloadYear);
+
+      const storedIssues = await getLatestStoredIssues(req.user, workloadYear);
 
       if (storedIssues) {
         return res.json(storedIssues);
       }
 
-      const workloads = await getVisibleWorkloads(req.user);
+      const workloads = await getVisibleWorkloads(req.user, workloadYear);
       res.json(generateValidationIssues(workloads));
     } catch (err) {
       return handleServerError(res, err);

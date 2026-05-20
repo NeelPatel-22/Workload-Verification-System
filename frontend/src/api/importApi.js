@@ -12,11 +12,8 @@ function extractUsernameFromUserObject(user) {
   if (!user || typeof user !== "object") return null;
 
   if (user.username) return user.username;
-
   if (user.user?.username) return user.user.username;
-
   if (user.currentUser?.username) return user.currentUser.username;
-
   if (user.authUser?.username) return user.authUser.username;
 
   const role = user.role || user.user?.role || user.currentUser?.role;
@@ -47,6 +44,7 @@ function extractUsernameFromUserObject(user) {
 
 function getCurrentUsername() {
   const possibleKeys = [
+    "wvs_current_user",
     "user",
     "currentUser",
     "authUser",
@@ -77,7 +75,7 @@ function getCurrentUsername() {
   return null;
 }
 
-export async function uploadExcelFile(file) {
+function getAuthHeaders() {
   const username = getCurrentUsername();
 
   if (!username) {
@@ -86,14 +84,25 @@ export async function uploadExcelFile(file) {
     );
   }
 
+  return {
+    "x-user": username,
+  };
+}
+
+function buildYearQuery(workloadYear) {
+  if (!workloadYear) return "";
+
+  return `?workloadYear=${encodeURIComponent(workloadYear)}`;
+}
+
+export async function uploadExcelFile(file, workloadYear) {
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("workloadYear", String(workloadYear));
 
   const response = await fetch(`${API_URL}/api/import/excel`, {
     method: "POST",
-    headers: {
-      "x-user": username,
-    },
+    headers: getAuthHeaders(),
     body: formData,
   });
 
@@ -106,26 +115,35 @@ export async function uploadExcelFile(file) {
   return data;
 }
 
-export async function getImportReport() {
-  const username = getCurrentUsername();
+export async function getImportReport(workloadYear = null) {
+  const query = buildYearQuery(workloadYear);
 
-  if (!username) {
-    throw new Error(
-      "No logged-in user found. Please log out and log in again as School Operations."
-    );
-  }
-
-  const response = await fetch(`${API_URL}/api/import/report`, {
+  const response = await fetch(`${API_URL}/api/import/report${query}`, {
     method: "GET",
-    headers: {
-      "x-user": username,
-    },
+    headers: getAuthHeaders(),
   });
 
   const data = await response.json();
 
   if (!response.ok) {
     throw new Error(data.message || "Failed to load import report.");
+  }
+
+  return data;
+}
+
+export async function getImportBatches(workloadYear = null) {
+  const query = buildYearQuery(workloadYear);
+
+  const response = await fetch(`${API_URL}/api/import/batches${query}`, {
+    method: "GET",
+    headers: getAuthHeaders(),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.message || "Failed to load import batches.");
   }
 
   return data;

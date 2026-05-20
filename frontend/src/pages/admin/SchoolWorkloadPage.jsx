@@ -1,18 +1,40 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, Table, Tag, Typography, Space, Select, Spin, Alert } from 'antd';
 import { useAuth } from '../../context/AuthContext';
 
 const { Title, Text } = Typography;
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const ANNUAL_HOURS_PER_FTE = 1600;
 
 function calculateHours(percent, fte = 1) {
-  return Math.round(((Number(percent) || 0) / 100) * ANNUAL_HOURS_PER_FTE * (Number(fte) || 1));
+  return Math.round(
+    ((Number(percent) || 0) / 100) *
+      ANNUAL_HOURS_PER_FTE *
+      (Number(fte) || 1)
+  );
 }
 
 export default function SchoolWorkloadPage() {
   const { currentUser } = useAuth();
+  const currentYear = new Date().getFullYear();
 
+  const yearOptions = useMemo(
+    () =>
+      [
+        currentYear,
+        currentYear - 1,
+        currentYear - 2,
+        currentYear - 3,
+        currentYear - 4,
+      ].map((year) => ({
+        label: `${year} workload`,
+        value: year,
+      })),
+    [currentYear]
+  );
+
+  const [selectedYear, setSelectedYear] = useState(currentYear);
   const [loading, setLoading] = useState(true);
   const [workload, setWorkload] = useState([]);
   const [deptFilter, setDeptFilter] = useState('All');
@@ -30,12 +52,15 @@ export default function SchoolWorkloadPage() {
       setError('');
 
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/workloads`, {
-          headers: {
-            'Content-Type': 'application/json',
-            'x-user': currentUser.username,
-          },
-        });
+        const response = await fetch(
+          `${API_URL}/api/workloads?workloadYear=${selectedYear}`,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'x-user': currentUser.username,
+            },
+          }
+        );
 
         const data = await response.json();
 
@@ -44,6 +69,7 @@ export default function SchoolWorkloadPage() {
         }
 
         setWorkload(Array.isArray(data) ? data : []);
+        setDeptFilter('All');
       } catch (err) {
         console.error('Failed to load workload:', err);
         setError(err.message || 'Unable to load workload data.');
@@ -53,7 +79,7 @@ export default function SchoolWorkloadPage() {
     };
 
     fetchData();
-  }, [currentUser]);
+  }, [currentUser, selectedYear]);
 
   const enhancedWorkload = workload.map((w) => ({
     ...w,
@@ -65,7 +91,10 @@ export default function SchoolWorkloadPage() {
     totalHours: calculateHours(w.total, w.fte),
   }));
 
-  const departments = ['All', ...new Set(enhancedWorkload.map((w) => w.department).filter(Boolean))];
+  const departments = [
+    'All',
+    ...new Set(enhancedWorkload.map((w) => w.department).filter(Boolean)),
+  ];
 
   const filtered =
     deptFilter === 'All'
@@ -73,9 +102,25 @@ export default function SchoolWorkloadPage() {
       : enhancedWorkload.filter((w) => w.department === deptFilter);
 
   const columns = [
-    { title: 'Staff Member', dataIndex: 'name', key: 'name', fixed: 'left', width: 150 },
-    { title: 'Department', dataIndex: 'department', key: 'department', width: 130 },
-    { title: 'FTE', dataIndex: 'fte', key: 'fte', width: 70 },
+    {
+      title: 'Staff Member',
+      dataIndex: 'name',
+      key: 'name',
+      fixed: 'left',
+      width: 150,
+    },
+    {
+      title: 'Department',
+      dataIndex: 'department',
+      key: 'department',
+      width: 130,
+    },
+    {
+      title: 'FTE',
+      dataIndex: 'fte',
+      key: 'fte',
+      width: 70,
+    },
     {
       title: 'Teaching',
       key: 'teaching',
@@ -177,27 +222,64 @@ export default function SchoolWorkloadPage() {
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: 16,
+          alignItems: 'flex-end',
+          flexWrap: 'wrap',
+        }}
+      >
         <div>
-          <Title level={4} style={{ margin: 0 }}>School Workload Overview</Title>
+          <Title level={4} style={{ margin: 0 }}>
+            School Workload Overview
+          </Title>
           <Text type="secondary">
-            {filtered.length} staff member(s) shown · Estimated on {ANNUAL_HOURS_PER_FTE} hours per 1.0 FTE
+            {selectedYear} workload · {filtered.length} staff member(s) shown ·
+            Estimated on {ANNUAL_HOURS_PER_FTE} hours per 1.0 FTE
           </Text>
         </div>
 
-        <Select
-          value={deptFilter}
-          onChange={setDeptFilter}
-          style={{ width: 200 }}
-          options={departments.map((d) => ({ label: d, value: d }))}
-        />
+        <Space>
+          <div>
+            <Text type="secondary">Workload year</Text>
+            <br />
+            <Select
+              value={selectedYear}
+              onChange={setSelectedYear}
+              style={{ width: 180 }}
+              options={yearOptions}
+            />
+          </div>
+
+          <div>
+            <Text type="secondary">Department</Text>
+            <br />
+            <Select
+              value={deptFilter}
+              onChange={setDeptFilter}
+              style={{ width: 200 }}
+              options={departments.map((d) => ({ label: d, value: d }))}
+            />
+          </div>
+        </Space>
       </div>
+
+      {filtered.length === 0 && (
+        <Alert
+          type="info"
+          showIcon
+          message={`No workload data found for ${selectedYear}.`}
+          description="Upload a workload spreadsheet for this year from the Import Data page."
+        />
+      )}
 
       <Card>
         <Table
           columns={columns}
           dataSource={filtered}
-          rowKey="staffId"
+          rowKey={(record) => `${record.importBatchId || 'demo'}-${record.staffId}`}
           pagination={false}
           size="middle"
           scroll={{ x: 1200 }}

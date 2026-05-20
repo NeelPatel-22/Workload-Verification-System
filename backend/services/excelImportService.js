@@ -288,7 +288,13 @@ async function insertIssue(db, importBatchId, issue) {
   );
 }
 
-export async function importExcelWorkbook({ db, filePath, originalName, uploadedBy }) {
+export async function importExcelWorkbook({
+  db,
+  filePath,
+  originalName,
+  uploadedBy,
+  workloadYear = new Date().getFullYear(),
+}) {
   const workbook = xlsx.readFile(filePath, {
     cellDates: true,
     cellFormula: false,
@@ -836,17 +842,19 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
   await db.exec("BEGIN TRANSACTION");
 
   try {
-    const batchResult = await db.run(
-      `INSERT INTO import_batches (filename, uploadedBy, importedAt, status, notes)
-       VALUES (?, ?, ?, ?, ?)`,
-      [
-        originalName,
-        uploadedBy?.username || uploadedBy?.name || "unknown",
-        new Date().toISOString(),
-        "processing",
-        "Import started. Data is stored under this import batch.",
-      ]
-    );
+  const batchResult = await db.run(
+  `INSERT INTO import_batches
+   (filename, uploadedBy, importedAt, workloadYear, status, notes)
+   VALUES (?, ?, ?, ?, ?, ?)`,
+  [
+    originalName,
+    uploadedBy?.username || uploadedBy?.name || "unknown",
+    new Date().toISOString(),
+    workloadYear,
+    "processing",
+    `Import started for workload year ${workloadYear}. Data is stored under this import batch.`,
+  ]
+);
 
     importBatchId = batchResult.lastID;
 
@@ -1048,6 +1056,7 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
 
   return {
     importBatchId,
+    workloadYear,
     imported: {
       staff: parsedStaff.length,
       units: parsedUnits.length,
@@ -1061,10 +1070,26 @@ export async function importExcelWorkbook({ db, filePath, originalName, uploaded
   };
 }
 
-export async function getLatestImportReport(db, user) {
-  const latestImport = await db.get(
-    "SELECT * FROM import_batches WHERE status = 'completed' ORDER BY id DESC LIMIT 1"
-  );
+export async function getLatestImportReport(db, user, workloadYear = null) {
+  let latestImport;
+
+  if (workloadYear) {
+    latestImport = await db.get(
+      `SELECT * FROM import_batches
+       WHERE status = 'completed'
+         AND workloadYear = ?
+       ORDER BY importedAt DESC, id DESC
+       LIMIT 1`,
+      [workloadYear]
+    );
+  } else {
+    latestImport = await db.get(
+      `SELECT * FROM import_batches
+       WHERE status = 'completed'
+       ORDER BY workloadYear DESC, importedAt DESC, id DESC
+       LIMIT 1`
+    );
+  }
 
   if (!latestImport) {
     return {
@@ -1095,7 +1120,15 @@ export async function getLatestImportReport(db, user) {
   );
 
   const workloads = await db.all(
-    `SELECT * FROM workloads ${workloadWhere} ORDER BY department ASC, name ASC`,
+    `SELECT
+       w.*,
+       b.workloadYear,
+       b.filename,
+       b.importedAt
+     FROM workloads w
+     LEFT JOIN import_batches b ON b.id = w.importBatchId
+     ${workloadWhere}
+     ORDER BY w.department ASC, w.name ASC`,
     workloadParams
   );
 

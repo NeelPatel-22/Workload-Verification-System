@@ -1,6 +1,17 @@
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
 
+async function ensureColumn(db, tableName, columnName, columnDefinition) {
+  const columns = await db.all(`PRAGMA table_info(${tableName})`);
+  const exists = columns.some((column) => column.name === columnName);
+
+  if (!exists) {
+    await db.run(
+      `ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition}`
+    );
+  }
+}
+
 // Create DB connection
 export async function initDB() {
   const db = await open({
@@ -14,6 +25,8 @@ export async function initDB() {
 
 // Create tables if they do not exist
 export async function setupDB(db) {
+  const currentYear = new Date().getFullYear();
+
   await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,6 +45,7 @@ export async function setupDB(db) {
       filename TEXT NOT NULL,
       uploadedBy TEXT NOT NULL,
       importedAt TEXT NOT NULL,
+      workloadYear INTEGER NOT NULL DEFAULT ${currentYear},
       status TEXT NOT NULL CHECK (status IN ('processing', 'completed', 'failed')),
       staffCount INTEGER NOT NULL DEFAULT 0,
       unitCount INTEGER NOT NULL DEFAULT 0,
@@ -45,8 +59,13 @@ export async function setupDB(db) {
     );
   `);
 
-  // Workload summary table used by dashboards.
-  // importBatchId lets us keep history safely and still show only the latest import.
+  await ensureColumn(
+    db,
+    "import_batches",
+    "workloadYear",
+    `INTEGER NOT NULL DEFAULT ${currentYear}`
+  );
+
   await db.exec(`
     CREATE TABLE IF NOT EXISTS workloads (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,8 +104,6 @@ export async function setupDB(db) {
     );
   `);
 
-  // Workbook source tables. These are intentionally more flexible because
-  // they store imported Excel data, including invalid rows that need to be reported.
   await db.exec(`
     CREATE TABLE IF NOT EXISTS staff_sources (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -218,6 +235,14 @@ export async function setupDB(db) {
       FOREIGN KEY (importBatchId) REFERENCES import_batches(id) ON DELETE CASCADE
     );
   `);
+
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_import_batches_year_status
+    ON import_batches (workloadYear, status);
+
+    CREATE INDEX IF NOT EXISTS idx_workloads_staff_import
+    ON workloads (staffId, importBatchId);
+  `);
 }
 
 // Seed Users
@@ -272,7 +297,8 @@ export async function seedWorkloads(db) {
     const values = [];
 
     for (let i = 1; i <= 18; i++) {
-      const dept = i <= 7 || i === 9 ? "CSSE" : i <= 13 ? "Mathematics" : "Physics";
+      const dept =
+        i <= 7 || i === 9 ? "CSSE" : i <= 13 ? "Mathematics" : "Physics";
 
       values.push(
         `(NULL, ${i}, 'Dummy, ${String(i).padStart(
