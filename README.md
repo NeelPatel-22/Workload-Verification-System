@@ -31,7 +31,7 @@ npm install
 node server.js
 ```
 
-The backend runs at `http://localhost:3001`.  
+The backend runs at `http://localhost:5000`.  
 A SQLite database (`database.sqlite`) is created automatically on first run and
 seeded with demo users.
 
