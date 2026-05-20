@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Button,
@@ -6,6 +6,7 @@ import {
   Col,
   Divider,
   Row,
+  Select,
   Space,
   Spin,
   Statistic,
@@ -32,30 +33,93 @@ function severityColor(severity) {
   return "blue";
 }
 
+function detectYearFromFilename(fileName) {
+  const match = String(fileName || "").match(/\b(20\d{2})\b/);
+
+  if (!match) return null;
+
+  const year = Number.parseInt(match[1], 10);
+  const currentYear = new Date().getFullYear();
+
+  if (year < 2000 || year > currentYear + 1) {
+    return null;
+  }
+
+  return year;
+}
+
 export default function ImportData() {
+  const currentYear = new Date().getFullYear();
+
+  const yearOptions = useMemo(
+    () =>
+      [
+        currentYear,
+        currentYear - 1,
+        currentYear - 2,
+        currentYear - 3,
+        currentYear - 4,
+      ].map((year) => ({
+        label: `${year} workload`,
+        value: year,
+      })),
+    [currentYear]
+  );
+
   const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedYear, setSelectedYear] = useState(currentYear);
   const [uploading, setUploading] = useState(false);
-  const [loadingReport, setLoadingReport] = useState(false);
+  const [loadingReport, setLoadingReport] = useState(true);
   const [report, setReport] = useState(null);
   const [error, setError] = useState("");
 
-  async function loadReport() {
+  const loadReport = useCallback(async (yearToLoad = selectedYear) => {
     try {
       setLoadingReport(true);
       setError("");
 
-      const data = await getImportReport();
+      const data = await getImportReport(yearToLoad);
+
       setReport(data);
     } catch (err) {
+      setReport(null);
       setError(err.message || "Could not load import report.");
     } finally {
       setLoadingReport(false);
     }
-  }
+  }, [selectedYear]);
 
   useEffect(() => {
-    loadReport();
-  }, []);
+    let cancelled = false;
+
+    async function loadReportForSelectedYear() {
+      try {
+        setLoadingReport(true);
+        setError("");
+
+        const data = await getImportReport(selectedYear);
+
+        if (!cancelled) {
+          setReport(data);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setReport(null);
+          setError(err.message || "Could not load import report.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingReport(false);
+        }
+      }
+    }
+
+    loadReportForSelectedYear();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedYear]);
 
   async function handleUpload() {
     if (!selectedFile) {
@@ -63,16 +127,21 @@ export default function ImportData() {
       return;
     }
 
+    if (!selectedYear) {
+      message.warning("Please select a workload year.");
+      return;
+    }
+
     try {
       setUploading(true);
       setError("");
 
-      await uploadExcelFile(selectedFile);
+      await uploadExcelFile(selectedFile, selectedYear);
 
-      message.success("Excel import completed successfully.");
+      message.success(`Excel import completed for ${selectedYear}.`);
       setSelectedFile(null);
 
-      await loadReport();
+      await loadReport(selectedYear);
     } catch (err) {
       setError(err.message || "Excel import failed.");
       message.error(err.message || "Excel import failed.");
@@ -87,6 +156,14 @@ export default function ImportData() {
     accept: ".xlsm,.xlsx,.xls",
     beforeUpload: (file) => {
       setSelectedFile(file);
+
+      const detectedYear = detectYearFromFilename(file.name);
+
+      if (detectedYear) {
+        setSelectedYear(detectedYear);
+        message.info(`Detected workload year ${detectedYear} from file name.`);
+      }
+
       return false;
     },
     onRemove: () => {
@@ -144,13 +221,22 @@ export default function ImportData() {
       dataIndex: "sourceSheet",
       key: "sourceSheet",
       width: 220,
+      render: (value) => value || "-",
     },
     {
       title: "Row",
       dataIndex: "sourceRow",
       key: "sourceRow",
-      width: 90,
-      render: (value) => value || "-",
+      width: 110,
+      render: (value, record) => {
+        if (value) return value;
+
+        if (record.sourceSheet === "Calculated Workload Summary") {
+          return "System";
+        }
+
+        return "-";
+      },
     },
   ];
 
@@ -259,7 +345,7 @@ export default function ImportData() {
         </Title>
         <Text type="secondary">
           Upload Excel workload source files, parse them into the database, and
-          review validation issues.
+          review validation issues by workload year.
         </Text>
       </div>
 
@@ -273,37 +359,58 @@ export default function ImportData() {
         />
       )}
 
-      <Card title="Upload Workload Excel File" style={{ marginBottom: 24 }}>
-        <Dragger {...uploadProps} style={{ marginBottom: 16 }}>
-          <p className="ant-upload-drag-icon">
-            <InboxOutlined />
-          </p>
-          <p className="ant-upload-text">
-            Click or drag the Excel file here to upload
-          </p>
-          <p className="ant-upload-hint">
-            Accepted file types: .xlsm, .xlsx, .xls
-          </p>
-        </Dragger>
+      <Card title="Upload and View Workload Data" style={{ marginBottom: 24 }}>
+        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+          <div>
+            <Text strong>Workload year</Text>
+            <br />
+            <Text type="secondary">
+              Select the year this spreadsheet belongs to. The import summary,
+              validation issues, and workload records below will also update to
+              this selected year.
+            </Text>
 
-        <Space>
-          <Button
-            type="primary"
-            icon={<UploadOutlined />}
-            loading={uploading}
-            disabled={!selectedFile}
-            onClick={handleUpload}
-          >
-            Import Excel File
-          </Button>
+            <Select
+              value={selectedYear}
+              options={yearOptions}
+              onChange={(year) => {
+                setSelectedYear(year);
+              }}
+              style={{ width: 220, display: "block", marginTop: 8 }}
+            />
+          </div>
 
-          <Button
-            icon={<ReloadOutlined />}
-            loading={loadingReport}
-            onClick={loadReport}
-          >
-            Refresh Report
-          </Button>
+          <Dragger {...uploadProps}>
+            <p className="ant-upload-drag-icon">
+              <InboxOutlined />
+            </p>
+            <p className="ant-upload-text">
+              Click or drag the Excel file here to upload
+            </p>
+            <p className="ant-upload-hint">
+              Accepted file types: .xlsm, .xlsx, .xls
+            </p>
+          </Dragger>
+
+          <Space>
+            <Button
+              type="primary"
+              icon={<UploadOutlined />}
+              loading={uploading}
+              disabled={!selectedFile}
+              onClick={handleUpload}
+            >
+              Import Excel File
+            </Button>
+
+            <Button
+              icon={<ReloadOutlined />}
+              loading={loadingReport}
+              onClick={() => loadReport(selectedYear)}
+            >
+              Refresh Report
+            </Button>
+          </Space>
         </Space>
       </Card>
 
@@ -311,39 +418,71 @@ export default function ImportData() {
         {!latestImport ? (
           <Alert
             type="info"
-            message="No import report yet"
-            description="Upload an Excel workbook to generate the first import report."
+            message={`No import report found for ${selectedYear}`}
+            description="Upload an Excel workbook for this workload year to generate an import report."
             showIcon
           />
         ) : (
           <>
-            <Card title="Latest Import Summary" style={{ marginBottom: 24 }}>
+            <Card
+              title={`Import Summary for ${selectedYear}`}
+              style={{ marginBottom: 24 }}
+            >
               <Row gutter={[16, 16]}>
                 <Col xs={24} sm={12} md={6}>
                   <Statistic
-                    title="Staff Imported"
-                    value={latestImport.staffCount}
+                    title="Workload Year"
+                    value={latestImport.workloadYear || selectedYear}
+                    formatter={(value) => value}
                   />
                 </Col>
 
                 <Col xs={24} sm={12} md={6}>
                   <Statistic
-                    title="Units Imported"
-                    value={latestImport.unitCount}
-                  />
-                </Col>
-
-                <Col xs={24} sm={12} md={6}>
-                  <Statistic
-                    title="Workloads Created"
-                    value={latestImport.workloadCount}
+                    title="Staff Workloads Created"
+                    value={latestImport.workloadCount || 0}
                   />
                 </Col>
 
                 <Col xs={24} sm={12} md={6}>
                   <Statistic
                     title="Validation Issues"
-                    value={latestImport.issueCount}
+                    value={latestImport.issueCount || 0}
+                  />
+                </Col>
+
+                <Col xs={24} sm={12} md={6}>
+                  <Statistic
+                    title="Staff Imported"
+                    value={latestImport.staffCount || 0}
+                  />
+                </Col>
+
+                <Col xs={24} sm={12} md={6}>
+                  <Statistic
+                    title="Units Imported"
+                    value={latestImport.unitCount || 0}
+                  />
+                </Col>
+
+                <Col xs={24} sm={12} md={6}>
+                  <Statistic
+                    title="Teaching Rows"
+                    value={latestImport.teachingRowCount || 0}
+                  />
+                </Col>
+
+                <Col xs={24} sm={12} md={6}>
+                  <Statistic
+                    title="HDR Rows"
+                    value={latestImport.hdrRowCount || 0}
+                  />
+                </Col>
+
+                <Col xs={24} sm={12} md={6}>
+                  <Statistic
+                    title="Assigned Role Rows"
+                    value={latestImport.assignedRoleRowCount || 0}
                   />
                 </Col>
               </Row>
@@ -352,25 +491,27 @@ export default function ImportData() {
 
               <Space direction="vertical" size={4}>
                 <Text>
-                  <strong>File:</strong> {latestImport.filename}
+                  <strong>File:</strong> {latestImport.filename || "-"}
                 </Text>
 
                 <Text>
-                  <strong>Uploaded by:</strong> {latestImport.uploadedBy}
+                  <strong>Uploaded by:</strong> {latestImport.uploadedBy || "-"}
                 </Text>
 
                 <Text>
                   <strong>Imported at:</strong>{" "}
-                  {new Date(latestImport.importedAt).toLocaleString()}
+                  {latestImport.importedAt
+                    ? new Date(latestImport.importedAt).toLocaleString()
+                    : "-"}
                 </Text>
 
                 <Text>
                   <strong>Status:</strong>{" "}
-                  <Tag color="green">{latestImport.status}</Tag>
+                  <Tag color="green">{latestImport.status || "completed"}</Tag>
                 </Text>
 
                 <Text>
-                  <strong>Notes:</strong> {latestImport.notes}
+                  <strong>Notes:</strong> {latestImport.notes || "-"}
                 </Text>
               </Space>
             </Card>
@@ -383,7 +524,10 @@ export default function ImportData() {
                   label: `Validation Issues (${validationIssues.length})`,
                   children: (
                     <Table
-                      rowKey="id"
+                      rowKey={(record) =>
+                        record.id ||
+                        `${record.type}-${record.staffId}-${record.sourceRow}`
+                      }
                       columns={issueColumns}
                       dataSource={validationIssues}
                       pagination={{ pageSize: 10 }}
@@ -408,7 +552,7 @@ export default function ImportData() {
                   label: `Workloads (${workloads.length})`,
                   children: (
                     <Table
-                      rowKey="id"
+                      rowKey={(record) => record.id || record.staffId}
                       columns={workloadColumns}
                       dataSource={workloads}
                       pagination={{ pageSize: 10 }}

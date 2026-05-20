@@ -1,4 +1,15 @@
-import { Card, Table, Typography, Alert, Button, Descriptions, Space, Spin } from 'antd';
+import {
+  Card,
+  Table,
+  Typography,
+  Alert,
+  Button,
+  Descriptions,
+  Space,
+  Spin,
+  Tag,
+  Select,
+} from 'antd';
 import { ExclamationCircleOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
@@ -6,10 +17,24 @@ import { useAuth } from '../../context/AuthContext';
 
 const { Title, Text } = Typography;
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const ANNUAL_HOURS_PER_FTE = 1600;
 
 function calculateHours(percent, fte = 1) {
-  return Math.round(((Number(percent) || 0) / 100) * ANNUAL_HOURS_PER_FTE * (Number(fte) || 1));
+  return Math.round(
+    ((Number(percent) || 0) / 100) *
+      ANNUAL_HOURS_PER_FTE *
+      (Number(fte) || 1)
+  );
+}
+
+function formatPercent(value) {
+  return `${Number(value || 0)}%`;
+}
+
+function formatDate(value) {
+  if (!value) return '-';
+  return new Date(value).toLocaleDateString();
 }
 
 export default function StaffWorkloadPage() {
@@ -17,6 +42,8 @@ export default function StaffWorkloadPage() {
   const navigate = useNavigate();
 
   const [workload, setWorkload] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [selectedWorkloadKey, setSelectedWorkloadKey] = useState('current');
   const [issues, setIssues] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -33,14 +60,14 @@ export default function StaffWorkloadPage() {
       setError('');
 
       try {
-        const [workloadRes, issuesRes] = await Promise.all([
-          fetch(`${import.meta.env.VITE_API_URL}/api/workloads/my`, {
+        const [workloadRes, historyRes] = await Promise.all([
+          fetch(`${API_URL}/api/workloads/my`, {
             headers: {
               'Content-Type': 'application/json',
               'x-user': currentUser.username,
             },
           }),
-          fetch(`${import.meta.env.VITE_API_URL}/api/validation-issues/my`, {
+          fetch(`${API_URL}/api/workloads/my/history?years=2`, {
             headers: {
               'Content-Type': 'application/json',
               'x-user': currentUser.username,
@@ -53,16 +80,18 @@ export default function StaffWorkloadPage() {
           throw new Error(workloadErr.message || 'Failed to load workload data.');
         }
 
-        if (!issuesRes.ok) {
-          const issuesErr = await issuesRes.json().catch(() => ({}));
-          throw new Error(issuesErr.message || 'Failed to load validation issues.');
+        if (!historyRes.ok) {
+          const historyErr = await historyRes.json().catch(() => ({}));
+          throw new Error(historyErr.message || 'Failed to load workload history.');
         }
 
         const workloadData = await workloadRes.json();
-        const issuesData = await issuesRes.json();
+        const historyData = await historyRes.json();
 
         setWorkload(workloadData);
-        setIssues(Array.isArray(issuesData) ? issuesData : []);
+        setIssues([]);
+        setHistory(Array.isArray(historyData) ? historyData : []);
+        setSelectedWorkloadKey('current');
       } catch (err) {
         console.error('Failed to load workload page data:', err);
         setError(err.message || 'Unable to load workload data.');
@@ -74,6 +103,47 @@ export default function StaffWorkloadPage() {
     fetchData();
   }, [currentUser]);
 
+useEffect(() => {
+  async function fetchIssuesForSelectedWorkload() {
+    if (!currentUser?.username || !workload) return;
+
+    const selectedWorkload =
+      selectedWorkloadKey === 'current'
+        ? workload
+        : history.find((item) => String(item.id) === String(selectedWorkloadKey)) ||
+          workload;
+
+    if (!selectedWorkload?.importBatchId) {
+      setIssues([]);
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/validation-issues/my?importBatchId=${selectedWorkload.importBatchId}`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user': currentUser.username,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to load validation issues.');
+      }
+
+      const data = await response.json();
+      setIssues(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to load validation issues:', err);
+      setIssues([]);
+    }
+  }
+
+  fetchIssuesForSelectedWorkload();
+}, [currentUser, workload, history, selectedWorkloadKey]);
   if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: '40px' }}>
@@ -103,44 +173,72 @@ export default function StaffWorkloadPage() {
     );
   }
 
-  const annualHours = Math.round(ANNUAL_HOURS_PER_FTE * (Number(workload.fte) || 1));
+  const selectedWorkload =
+    selectedWorkloadKey === 'current'
+      ? workload
+      : history.find((item) => String(item.id) === String(selectedWorkloadKey)) ||
+        workload;
+
+  const currentWorkloadYear =
+    workload.workloadYear || new Date().getFullYear();
+
+  const selectedWorkloadYear =
+    selectedWorkload.workloadYear || currentWorkloadYear;
+
+  const annualHours = Math.round(
+    ANNUAL_HOURS_PER_FTE * (Number(selectedWorkload.fte) || 1)
+  );
+
+  const workloadOptions = [
+    {
+      value: 'current',
+      label: `Current workload (${currentWorkloadYear})`,
+    },
+    ...history.map((item) => ({
+      value: String(item.id),
+      label: `Past workload (${item.workloadYear})`,
+    })),
+  ];
 
   const tableData = [
     {
       key: '1',
       category: 'Teaching',
-      percent: workload.teaching ?? 0,
-      hours: calculateHours(workload.teaching, workload.fte),
+      percent: selectedWorkload.teaching ?? 0,
+      hours: calculateHours(selectedWorkload.teaching, selectedWorkload.fte),
     },
     {
       key: '2',
       category: 'HDR Supervision',
-      percent: workload.hdSupervision ?? 0,
-      hours: calculateHours(workload.hdSupervision, workload.fte),
+      percent: selectedWorkload.hdSupervision ?? 0,
+      hours: calculateHours(selectedWorkload.hdSupervision, selectedWorkload.fte),
     },
     {
       key: '3',
       category: 'Research',
-      percent: workload.research ?? 0,
-      hours: calculateHours(workload.research, workload.fte),
+      percent: selectedWorkload.research ?? 0,
+      hours: calculateHours(selectedWorkload.research, selectedWorkload.fte),
     },
     {
       key: '4',
       category: 'Service & Citizenship',
-      percent: workload.service ?? 0,
-      hours: calculateHours(workload.service, workload.fte),
+      percent: selectedWorkload.service ?? 0,
+      hours: calculateHours(selectedWorkload.service, selectedWorkload.fte),
     },
     {
       key: '5',
       category: 'Assigned Roles',
-      percent: workload.assignedRole ?? 0,
-      hours: calculateHours(workload.assignedRole, workload.fte),
+      percent: selectedWorkload.assignedRole ?? 0,
+      hours: calculateHours(selectedWorkload.assignedRole, selectedWorkload.fte),
     },
     {
       key: '6',
       category: 'External Engagement',
-      percent: workload.externalEngagement ?? 0,
-      hours: calculateHours(workload.externalEngagement, workload.fte),
+      percent: selectedWorkload.externalEngagement ?? 0,
+      hours: calculateHours(
+        selectedWorkload.externalEngagement,
+        selectedWorkload.fte
+      ),
     },
   ];
 
@@ -160,12 +258,72 @@ export default function StaffWorkloadPage() {
     },
   ];
 
+  const historyColumns = [
+    {
+      title: 'Year',
+      dataIndex: 'workloadYear',
+      key: 'workloadYear',
+      width: 90,
+      render: (value) => <Text strong>{value || '-'}</Text>,
+    },
+    {
+      title: 'Teaching',
+      dataIndex: 'teaching',
+      key: 'teaching',
+      render: formatPercent,
+    },
+    {
+      title: 'Assigned Roles',
+      dataIndex: 'assignedRole',
+      key: 'assignedRole',
+      render: formatPercent,
+    },
+    {
+      title: 'Service',
+      dataIndex: 'service',
+      key: 'service',
+      render: formatPercent,
+    },
+    {
+      title: 'HDR',
+      dataIndex: 'hdSupervision',
+      key: 'hdSupervision',
+      render: formatPercent,
+    },
+    {
+      title: 'Research',
+      dataIndex: 'research',
+      key: 'research',
+      render: formatPercent,
+    },
+    {
+      title: 'Total',
+      dataIndex: 'total',
+      key: 'total',
+      render: formatPercent,
+    },
+    {
+      title: 'T:R Status',
+      dataIndex: 'hasDiscrepancy',
+      key: 'hasDiscrepancy',
+      render: (value) =>
+        value ? <Tag color="red">Mismatch</Tag> : <Tag color="green">OK</Tag>,
+    },
+    {
+      title: 'Imported',
+      dataIndex: 'importedAt',
+      key: 'importedAt',
+      render: formatDate,
+    },
+  ];
+
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <div>
         <Title level={4} style={{ margin: 0 }}>My Workload</Title>
         <Text type="secondary">
-          2026 Academic Year · Estimated on {ANNUAL_HOURS_PER_FTE} hours per 1.0 FTE
+          Current workload: {currentWorkloadYear} Academic Year · Estimated on{' '}
+          {ANNUAL_HOURS_PER_FTE} hours per 1.0 FTE
         </Text>
       </div>
 
@@ -174,7 +332,7 @@ export default function StaffWorkloadPage() {
           type="warning"
           showIcon
           icon={<ExclamationCircleOutlined />}
-          message={`${issues.length} validation issue(s) detected in your workload data.`}
+          message={`${issues.length} validation issue(s) detected in the selected workload data.`}
           description="Please review and submit a query if any allocation is incorrect."
           action={
             <Button size="small" onClick={() => navigate('/staff/queries')}>
@@ -184,20 +342,52 @@ export default function StaffWorkloadPage() {
         />
       )}
 
+      <Card title="View Workload by Year" style={{ marginTop: 16 }}>
+        <Space direction="vertical" size={4}>
+          <Text type="secondary">
+            Select your current workload or one of the previous two workload years.
+          </Text>
+
+          <Select
+            value={selectedWorkloadKey}
+            style={{ width: 300 }}
+            onChange={setSelectedWorkloadKey}
+            options={workloadOptions}
+          />
+        </Space>
+      </Card>
+
       <Card style={{ marginTop: 16 }}>
-        <Descriptions bordered size="small" column={2} title="Staff Information">
-          <Descriptions.Item label="Name">{workload.name}</Descriptions.Item>
-          <Descriptions.Item label="Department">{workload.department}</Descriptions.Item>
-          <Descriptions.Item label="FTE">{workload.fte}</Descriptions.Item>
-          <Descriptions.Item label="Estimated Annual Hours">{annualHours} hrs</Descriptions.Item>
-          <Descriptions.Item label="Total Workload">{workload.total}%</Descriptions.Item>
+        <Descriptions
+          bordered
+          size="small"
+          column={2}
+          title={`Staff Information - ${selectedWorkloadYear}`}
+        >
+          <Descriptions.Item label="Name">{selectedWorkload.name}</Descriptions.Item>
+          <Descriptions.Item label="Department">
+            {selectedWorkload.department}
+          </Descriptions.Item>
+          <Descriptions.Item label="Workload Year">
+            {selectedWorkloadYear}
+          </Descriptions.Item>
+          <Descriptions.Item label="FTE">{selectedWorkload.fte}</Descriptions.Item>
+          <Descriptions.Item label="Estimated Annual Hours">
+            {annualHours} hrs
+          </Descriptions.Item>
+          <Descriptions.Item label="Total Workload">
+            {selectedWorkload.total}%
+          </Descriptions.Item>
           <Descriptions.Item label="Total Allocated Hours">
-            {calculateHours(workload.total, workload.fte)} hrs
+            {calculateHours(selectedWorkload.total, selectedWorkload.fte)} hrs
+          </Descriptions.Item>
+          <Descriptions.Item label="Source File">
+            {selectedWorkload.filename || 'Demo or latest imported workload'}
           </Descriptions.Item>
         </Descriptions>
       </Card>
 
-      <Card title="Workload Breakdown" style={{ marginTop: 16 }}>
+      <Card title={`Workload Breakdown - ${selectedWorkloadYear}`} style={{ marginTop: 16 }}>
         <Table
           columns={columns}
           dataSource={tableData}
@@ -209,14 +399,41 @@ export default function StaffWorkloadPage() {
                 <Text strong>Total</Text>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={1}>
-                <Text strong>{workload.total}%</Text>
+                <Text strong>{selectedWorkload.total}%</Text>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={2}>
-                <Text strong>{calculateHours(workload.total, workload.fte)} hrs</Text>
+                <Text strong>
+                  {calculateHours(selectedWorkload.total, selectedWorkload.fte)} hrs
+                </Text>
               </Table.Summary.Cell>
             </Table.Summary.Row>
           )}
         />
+      </Card>
+
+      <Card
+        title="Past Workload History"
+        extra={<Text type="secondary">Previous two workload years</Text>}
+        style={{ marginTop: 16 }}
+      >
+        {history.length === 0 ? (
+          <Alert
+            type="info"
+            showIcon
+            message="No past workload history found yet."
+            description="Historical records will appear here after previous-year workload spreadsheets are imported."
+          />
+        ) : (
+          <Table
+            rowKey={(record) =>
+              `${record.workloadYear}-${record.importBatchId}-${record.staffId}`
+            }
+            columns={historyColumns}
+            dataSource={history}
+            pagination={false}
+            scroll={{ x: 1000 }}
+          />
+        )}
       </Card>
 
       {issues.length > 0 && (
